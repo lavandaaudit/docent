@@ -1131,37 +1131,6 @@ function forecastAR1(series, steps = 6) {
   return { forecasts, lower, upper, confidence: Math.max(0, Math.min(1, r2)), model, r2 };
 }
 
-// Симуляція "що буде, якщо" — через граф зв'язків
-// Якщо змінити scaleId на delta, які інші шкали зреагують і наскільки
-function simulateShock(scaleId, delta, links = []) {
-  const effects = [{ scaleId, delta, direct: true }];
-  const visited = new Set([scaleId]);
-  // BFS по графу зв'язків
-  let frontier = [{ id: scaleId, delta }];
-  let depth = 0;
-  const maxDepth = 3;
-  while (frontier.length > 0 && depth < maxDepth) {
-    const nextFrontier = [];
-    frontier.forEach(({ id, delta: curDelta }) => {
-      links.forEach(link => {
-        let target = null;
-        if (link.fromId === id && !visited.has(link.toId)) target = link.toId;
-        else if (link.toId === id && !visited.has(link.fromId)) target = link.fromId;
-        if (target) {
-          visited.add(target);
-          // Ефект = delta * strength * decay^depth
-          const effect = curDelta * link.strength * Math.pow(0.6, depth + 1);
-          effects.push({ scaleId: target, delta: effect, direct: false, depth: depth + 1, via: id });
-          nextFrontier.push({ id: target, delta: effect });
-        }
-      });
-    });
-    frontier = nextFrontier;
-    depth++;
-  }
-  return effects;
-}
-
 // Прогноз фази організму на основі поточних трендів
 function forecastPhase(scales, organism, steps = 6) {
   const forecasts = {};
@@ -2118,11 +2087,6 @@ function answer(q) {
     return;
   }
 
-  if (q.match(/симуляц|що буде|what.if|сценар/)) {
-    reportSimulation();
-    return;
-  }
-
   if (q.match(/метап|самооц|точн|model|довіра модел/)) {
     reportMetacognition();
     return;
@@ -2221,158 +2185,297 @@ function reportCategory(scaleId) {
   const input = lastInput;
   const fmt = (n) => n.toLocaleString('en-US');
   const hist = STATE.history[scaleId] || [];
-  // Тренд
+
+  // ── Статистика ──────────────────────────────────────────────────
   const trend = hist.length > 1 ? (hist[hist.length - 1].value - hist[0].value) : 0;
-  const trendStr = trend > 0 ? `<em style="color: var(--teal);">↑ +${trend.toFixed(1)}</em>` : trend < 0 ? `<em style="color: var(--crimson);">↓ ${trend.toFixed(1)}</em>` : `<em style="color: var(--soft-white-faint);">→ стабільно</em>`;
+  const trendStr = trend > 0.5 ? `<em style="color: var(--teal);">↑ +${trend.toFixed(1)}</em>` : trend < -0.5 ? `<em style="color: var(--crimson);">↓ ${trend.toFixed(1)}</em>` : `<em style="color: var(--soft-white-faint);">→ стабільно</em>`;
   const histVals = hist.map(h => h.value);
   const histMin = histVals.length ? Math.min(...histVals).toFixed(1) : '—';
   const histMax = histVals.length ? Math.max(...histVals).toFixed(1) : '—';
   const histAvg = histVals.length ? (histVals.reduce((a, b) => a + b, 0) / histVals.length).toFixed(1) : '—';
+  // Прискорення (друга похідна)
+  const accel = histVals.length > 2 ? (histVals[histVals.length-1] - 2*histVals[histVals.length-2] + histVals[histVals.length-3]) : 0;
+  // Волатильність (std за історією)
+  const volatility = histVals.length > 3 ? Math.sqrt(histVals.reduce((a, v) => a + (v - histAvg) ** 2, 0) / histVals.length).toFixed(2) : '—';
 
   let html = `<strong>${scale.num} · ${scale.name}</strong> <span class="src">(${scale.fn})</span><br><br>`;
+
+  // ── ОСНОВНІ ПОКАЗНИКИ ───────────────────────────────────────────
   html += `<strong>Індекс:</strong> <span class="num">${scale.index.toFixed(1)}</span>/100 · Статус: <em>${statusUa(scale.status)}</em><br>`;
-  html += `<strong>Тренд:</strong> ${trendStr} · Min: <span class="num">${histMin}</span> · Max: <span class="num">${histMax}</span> · Середнє: <span class="num">${histAvg}</span><br>`;
-  // Z-score від baseline
+  html += `<strong>Тренд:</strong> ${trendStr} · Прискорення: <span class="num">${accel.toFixed(2)}</span> · Волатильність: <span class="num">${volatility}</span><br>`;
+  html += `<strong>Діапазон:</strong> Min <span class="num">${histMin}</span> · Max <span class="num">${histMax}</span> · Середнє <span class="num">${histAvg}</span> · Точок: <span class="num">${histVals.length}</span><br>`;
+
+  // ── Z-SCORE ─────────────────────────────────────────────────────
   const z = zScore(scale.index, scaleId);
   const bStats = baselineStats(scaleId);
   if (bStats) {
     const zColor = Math.abs(z) >= 2.5 ? 'var(--crimson)' : Math.abs(z) >= 2 ? 'var(--amber)' : 'var(--teal)';
-    html += `<strong>Baseline:</strong> норма <span class="num">${bStats.mean.toFixed(1)}</span>±<span class="num">${bStats.std.toFixed(1)}</span> · Z-score: <span class="num" style="color: ${zColor};">${z >= 0 ? '+' : ''}${z.toFixed(2)}σ</span> (${bStats.n} точок)<br>`;
+    html += `<strong>Baseline:</strong> норма <span class="num">${bStats.mean.toFixed(1)}</span>±<span class="num">${bStats.std.toFixed(1)}</span> · Z: <span class="num" style="color: ${zColor};">${z >= 0 ? '+' : ''}${z.toFixed(2)}σ</span><br>`;
     if (Math.abs(z) >= 2.5) html += `<em style="color: var(--crimson);">⚠ Статистична аномалія — відхилення > 2.5σ</em><br>`;
   }
 
+  // ── AR(1) ПРОГНОЗ ───────────────────────────────────────────────
+  const series = (baselineCache[scaleId] || []).map(p => p.value);
+  if (series.length >= 8) {
+    const fc = forecastAR1(series, 3);
+    if (fc.forecasts.length > 0) {
+      const next = fc.forecasts[0];
+      const change = next - scale.index;
+      const arrow = change > 0.5 ? '↑' : change < -0.5 ? '↓' : '→';
+      html += `<strong>Прогноз AR(1):</strong> ${arrow} <span class="num">${next.toFixed(1)}</span> через 10с · R²=<span class="num">${(fc.confidence * 100).toFixed(0)}%</span><br>`;
+    }
+  }
+
+  // ═══ ДЕТАЛІ ПО КАТЕГОРІЯХ ═══════════════════════════════════════
   if (scaleId === 'space') {
-    html += `<br><strong>КОСМІЧНА ПОГОДА · ДЕТАЛІ</strong><br>`;
-    html += `Планетарний Kp: <span class="num">${input.kp}</span> ${input.kp >= 5 ? '<em style="color: var(--crimson);">(G1+ буря)</em>' : input.kp >= 4 ? '<em style="color: var(--amber);">(неспокійно)</em>' : '<em style="color: var(--teal);">(спокійно)</em>'}<br>`;
+    html += `<br><strong>КОСМІЧНА ПОГОДА · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Поточний стан:</strong><br>`;
+    html += `Планетарний Kp: <span class="num">${input.kp}</span> `;
+    const kpLevel = input.kp >= 5 ? '<em style="color: var(--crimson);">G1+ геомагнітна буря</em>' : input.kp >= 4 ? '<em style="color: var(--amber);">G0 неспокійно</em>' : '<em style="color: var(--teal);">спокійно</em>';
+    html += kpLevel + '<br>';
     html += `M/X-спалахів (24 год): <span class="num">${input.flares}</span><br>`;
-    html += `<br><strong>Вплив:</strong><br>`;
+    html += `<br><strong>Шкала G-бур:</strong><br>`;
+    html += `<em>•</em> Kp 0-3: спокійно<br><em>•</em> Kp 4: неспокійно<br><em>•</em> Kp 5: G1 (слабка буря)<br><em>•</em> Kp 6: G2 (помірна)<br><em>•</em> Kp 7: G3 (сильна)<br><em>•</em> Kp 8: G4 (вкрай сильна)<br><em>•</em> Kp 9: G5 (екстремальна)<br>`;
+    html += `<br><strong>Вплив на цивілізацію:</strong><br>`;
     if (input.kp >= 5) {
-      html += `<em>•</em> GPS: перебої<br><em>•</em> Супутниковий зв'язок: деградація<br><em>•</em> Авіація: зміна маршрутів<br><em>•</em> Електромережі: ризик<br>`;
+      html += `<em>•</em> GPS-навігація: перебої, точність знижена<br>`;
+      html += `<em>•</em> Супутниковий зв'язок: деградація сигналу<br>`;
+      html += `<em>•</em> Авіація: зміна маршрутів полярних рейсів<br>`;
+      html += `<em>•</em> Електромережі: ризик струмів ГВЕ, можливі відключення<br>`;
+      html += `<em>•</em> Полярні сяйва: видимі до середніх широт<br>`;
     } else if (input.kp >= 4) {
-      html += `<em>•</em> Можливі затримки GPS<br><em>•</em> Полярні сяйва нижче звичайного<br>`;
+      html += `<em>•</em> Можливі мілкі затримки GPS<br>`;
+      html += `<em>•</em> Полярні сяйва видні нижче звичайного<br>`;
+      html += `<em>•</em> Незначний вплив на авіацію<br>`;
     } else {
       html += `<em>•</em> Космічна погода спокійна. Вплив мінімальний.<br>`;
+      html += `<em>•</em> Супутники, GPS, авіація — без перешкод<br>`;
     }
-    html += `<br><span class="src">NOAA SWPC · оновлення 3 хв</span>`;
+    html += `<br><span class="src">Джерело: NOAA SWPC · planetary K-index · оновлення 3 хв</span>`;
   } else if (scaleId === 'planet') {
-    html += `<br><strong>СЕРЕДОВИЩЕ · ДЕТАЛІ</strong><br>`;
-    html += `Землетрусів/год: <span class="num">${input.quakes.length}</span> · M4+: <span class="num">${input.bigQuakes}</span><br>`;
+    html += `<br><strong>СЕРЕДОВИЩЕ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Сейсмічна активність:</strong><br>`;
+    html += `Землетрусів за год: <span class="num">${input.quakes.length}</span> · M4+: <span class="num">${input.bigQuakes}</span><br>`;
     if (input.quakes.length > 0) {
-      const biggest = input.quakes[0];
-      html += `Найсильніший: <em>M${biggest.mag.toFixed(1)}</em> — ${biggest.title}<br>`;
-      html += `Глибина: <span class="num">${biggest.depth.toFixed(0)}</span>км${biggest.tsunami ? ' · <em style="color: var(--crimson);">ЦУНАМІ</em>' : ''}<br>`;
+      html += `<br><strong>Топ-5 найсильніших:</strong><br>`;
+      input.quakes.slice(0, 5).forEach((q, i) => {
+        const magColor = q.mag >= 5 ? 'var(--crimson)' : q.mag >= 4 ? 'var(--amber)' : 'var(--soft-white-dim)';
+        html += `<em>${i + 1}.</em> <span style="color: ${magColor};"><strong>M${q.mag.toFixed(1)}</strong></span> — ${q.title}<br>`;
+        html += `<span class="src">  глибина: ${q.depth.toFixed(0)}км${q.tsunami ? ' · <em style="color: var(--crimson);">ЦУНАМІ-РИЗИК</em>' : ''}</span><br>`;
+      });
     }
-    html += `<br><strong>Активні катастрофи (EONET):</strong> <span class="num">${input.eonet.length}</span><br>`;
+    html += `<br><strong>Розподіл за магнітудою:</strong><br>`;
+    const magBuckets = { 'M1-2': 0, 'M2-3': 0, 'M3-4': 0, 'M4-5': 0, 'M5+': 0 };
+    input.quakes.forEach(q => {
+      if (q.mag < 2) magBuckets['M1-2']++;
+      else if (q.mag < 3) magBuckets['M2-3']++;
+      else if (q.mag < 4) magBuckets['M3-4']++;
+      else if (q.mag < 5) magBuckets['M4-5']++;
+      else magBuckets['M5+']++;
+    });
+    Object.entries(magBuckets).forEach(([k, v]) => {
+      if (v > 0) html += `<em>•</em> ${k}: <span class="num">${v}</span><br>`;
+    });
+    html += `<br><strong>Активні катастрофи (NASA EONET):</strong> <span class="num">${input.eonet.length}</span><br>`;
     const byType = {};
     input.eonet.forEach(e => { byType[e.type] = (byType[e.type] || 0) + 1; });
-    Object.entries(byType).forEach(([type, count]) => {
+    Object.entries(byType).sort((a, b) => b[1] - a[1]).forEach(([type, count]) => {
       html += `<em>•</em> ${type}: <span class="num">${count}</span><br>`;
     });
     if (input.eonet.length > 0) {
-      html += `<br><strong>Останні:</strong><br>`;
-      input.eonet.slice(0, 3).forEach(e => { html += `<em>•</em> ${e.title}<br>`; });
+      html += `<br><strong>Останні катастрофи:</strong><br>`;
+      input.eonet.slice(0, 5).forEach(e => {
+        html += `<em>•</em> <strong style="color: ${e.type === 'wildfires' ? 'var(--amber)' : e.type === 'volcanoes' ? 'var(--crimson)' : 'var(--gold)'};">${e.type}</strong> — ${e.title}<br>`;
+      });
     }
-    html += `<br><span class="src">USGS + NASA EONET</span>`;
+    html += `<br><span class="src">Джерела: USGS (сейсміка) · NASA EONET (катастрофи)</span>`;
   } else if (scaleId === 'humanity') {
-    html += `<br><strong>ДЕМОГРАФІЯ · ДЕТАЛІ</strong><br>`;
+    html += `<br><strong>ДЕМОГРАФІЯ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Населення:</strong><br>`;
     html += `Живих: <span class="num">${fmt(w.population)}</span><br>`;
     html += `Народжень сьогодні: <em>${fmt(w.birthsToday)}</em> (${(w.birthsToday / 86400).toFixed(1)}/сек)<br>`;
     html += `Смертей сьогодні: <em>${fmt(w.deathsToday)}</em> (${(w.deathsToday / 86400).toFixed(1)}/сек)<br>`;
     const netPerSec = (w.birthsToday - w.deathsToday) / 86400;
-    html += `Приріст: <span class="num" style="color: var(--teal);">+${netPerSec.toFixed(1)}/сек</span> · +${fmt(Math.round(netPerSec * 3600))}/год<br>`;
-    html += `<br><strong>Прогноз:</strong> +<span class="num">${fmt(Math.round(netPerSec * 86400 * 365))}</span>/рік<br>`;
-    html += `<br><strong>Контекст:</strong><br>`;
-    html += `<em>•</em> Кожні ${Math.round(1 / (w.birthsToday / 86400))}с — нова людина<br>`;
-    html += `<em>•</em> Кожні ${Math.round(1 / (w.deathsToday / 86400))}с — хтось помирає<br>`;
+    html += `<br><strong>Приріст:</strong><br>`;
+    html += `<em>•</em> /сек: <span class="num" style="color: var(--teal);">+${netPerSec.toFixed(1)}</span><br>`;
+    html += `<em>•</em> /хв: <span class="num">+${fmt(Math.round(netPerSec * 60))}</span><br>`;
+    html += `<em>•</em> /год: <span class="num">+${fmt(Math.round(netPerSec * 3600))}</span><br>`;
+    html += `<em>•</em> /день: <span class="num">+${fmt(Math.round(netPerSec * 86400))}</span><br>`;
+    html += `<em>•</em> /міс: <span class="num">+${fmt(Math.round(netPerSec * 86400 * 30))}</span><br>`;
+    html += `<em>•</em> /рік: <span class="num">+${fmt(Math.round(netPerSec * 86400 * 365))}</span><br>`;
+    html += `<br><strong>Темп:</strong><br>`;
+    html += `<em>•</em> Кожні <span class="num">${Math.round(1 / (w.birthsToday / 86400))}</span>с народжується людина<br>`;
+    html += `<em>•</em> Кожні <span class="num">${Math.round(1 / (w.deathsToday / 86400))}</span>с хтось помирає<br>`;
     const sessionDelta = Math.round(netPerSec * (Date.now() - STATE.bootTs) / 1000);
-    html += `<em>•</em> За сесію: +<span class="num">${fmt(sessionDelta)}</span><br>`;
-    html += `<br><span class="src">Worldometers · UN baselines</span>`;
+    html += `<em>•</em> За вашу сесію: +<span class="num">${fmt(sessionDelta)}</span> людей<br>`;
+    html += `<br><strong>Прогноз:</strong><br>`;
+    html += `<em>•</em> Через 1 год: <span class="num">${fmt(w.population + Math.round(netPerSec * 3600))}</span><br>`;
+    html += `<em>•</em> Через 1 день: <span class="num">${fmt(w.population + Math.round(netPerSec * 86400))}</span><br>`;
+    html += `<em>•</em> Через 1 рік: <span class="num">${fmt(w.population + Math.round(netPerSec * 86400 * 365))}</span><br>`;
+    html += `<br><strong>Контекст:</strong><br>`;
+    html += `<em>•</em> Людство — ядро організму цивілізації<br>`;
+    html += `<em>•</em> Кожна людина — клітина, місто — орган<br>`;
+    html += `<em>•</em> Приріст = метаболізм цивілізації<br>`;
+    html += `<br><span class="src">Джерело: Worldometers · UN demographic baselines</span>`;
   } else if (scaleId === 'energy') {
-    html += `<br><strong>ЕНЕРГЕТИКА · ДЕТАЛІ</strong><br>`;
-    html += `Стан мережі: <em style="color: var(--teal);">номінальний</em><br>`;
-    html += `Споживання: ~<span class="num">18</span> ТВт·год/добу<br>`;
-    html += `<br><strong>Структура:</strong><br>`;
-    html += `<em>•</em> Вугілля: <span class="num">36%</span><br>`;
-    html += `<em>•</em> Газ: <span class="num">23%</span><br>`;
-    html += `<em>•</em> Гідро: <span class="num">16%</span><br>`;
-    html += `<em>•</em> Атом: <span class="num">10%</span><br>`;
-    html += `<em>•</em> Вітер/Сонце: <span class="num">12%</span><br>`;
-    html += `<br><span class="src">IEA estimates</span>`;
+    html += `<br><strong>ЕНЕРГЕТИКА · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Стан мережі:</strong> <em style="color: var(--teal);">номінальний</em><br>`;
+    html += `Глобальне споживання: ~<span class="num">18</span> ТВт·год/добу<br>`;
+    html += `На душу населення: ~<span class="num">${(18000000000000 / w.population).toFixed(0)}</span> Вт·год/рік<br>`;
+    html += `<br><strong>Структура генерації:</strong><br>`;
+    html += `<em>•</em> Вугілля: <span class="num">36%</span> (~6.5 ТВт)<br>`;
+    html += `<em>•</em> Газ: <span class="num">23%</span> (~4.1 ТВт)<br>`;
+    html += `<em>•</em> Гідро: <span class="num">16%</span> (~2.9 ТВт)<br>`;
+    html += `<em>•</em> Атом: <span class="num">10%</span> (~1.8 ТВт)<br>`;
+    html += `<em>•</em> Вітер: <span class="num">7%</span> (~1.3 ТВт)<br>`;
+    html += `<em>•</em> Сонце: <span class="num">5%</span> (~0.9 ТВт)<br>`;
+    html += `<em>•</em> Інше: <span class="num">3%</span><br>`;
+    html += `<br><strong>Відновлювані:</strong> <span class="num">28%</span> (гідро+вітер+сонце)<br>`;
+    html += `<br><strong>Викиди CO2 від енергетики:</strong><br>`;
+    html += `<em>•</em> Вугілля: ~<span class="num">10</span> Гт CO2/рік<br>`;
+    html += `<em>•</em> Газ: ~<span class="num">3</span> Гт CO2/рік<br>`;
+    html += `<em>•</em> Загалом: ~<span class="num">15</span> Гт CO2/рік<br>`;
+    html += `<br><strong>Зв'язок:</strong> Енергетика = кровообіг цивілізації. Без неї зупиняється метаболізм.<br>`;
+    html += `<br><span class="src">Оцінки: IEA · оновлення відсутнє (статичні дані)</span>`;
   } else if (scaleId === 'economy') {
-    html += `<br><strong>ЕКОНОМІКА · ДЕТАЛІ</strong><br>`;
+    html += `<br><strong>ЕКОНОМІКА · ПОВНИЙ ЗВІТ</strong><br><br>`;
     if (input.btc && input.btc.price > 0) {
-      html += `BTC: <span class="num">$${input.btc.price.toLocaleString('en-US')}</span><br>`;
+      html += `<strong>Ринок (BTC як проксі):</strong><br>`;
+      html += `Ціна: <span class="num">$${input.btc.price.toLocaleString('en-US')}</span><br>`;
       html += `Зміна 24 год: <em style="color: ${input.btc.change24h >= 0 ? 'var(--teal)' : 'var(--crimson)'};">${input.btc.change24h >= 0 ? '+' : ''}${input.btc.change24h.toFixed(2)}%</em><br>`;
       const vol = Math.abs(input.btc.change24h);
-      html += `Волатильність: ${vol > 5 ? '<em style="color: var(--crimson);">висока</em>' : vol > 2 ? '<em style="color: var(--amber);">помірна</em>' : '<em style="color: var(--teal);">низька</em>'}<br>`;
-      html += `<br><strong>Інтерпретація:</strong><br>`;
-      if (input.btc.change24h > 5) html += `<em>•</em> Сильне зростання — оптимізм<br>`;
-      else if (input.btc.change24h > 0) html += `<em>•</em> Помірне зростання — стабільність<br>`;
-      else if (input.btc.change24h > -5) html += `<em>•</em> Корекція<br>`;
-      else html += `<em>•</em> Стрес ринку<br>`;
+      const volStatus = vol > 5 ? '<em style="color: var(--crimson);">висока</em>' : vol > 2 ? '<em style="color: var(--amber);">помірна</em>' : '<em style="color: var(--teal);">низька</em>';
+      html += `Волатильність: ${volStatus}<br>`;
+      html += `<br><strong>Інтерпретація ринку:</strong><br>`;
+      if (input.btc.change24h > 5) {
+        html += `<em>•</em> Сильне зростання — ринок у фазі оптимізму<br>`;
+        html += `<em>•</em> Можливий інтерес до ризикованих активів<br>`;
+        html += `<em>•</em> Ймовірність корекції висок<br>`;
+      } else if (input.btc.change24h > 0) {
+        html += `<em>•</em> Помірне зростання — стабільний тренд<br>`;
+        html += `<em>•</em> Ринок у рівновазі<br>`;
+      } else if (input.btc.change24h > -5) {
+        html += `<em>•</em> Помірне падіння — корекція<br>`;
+        html += `<em>•</em> Інвестори обережні<br>`;
+      } else {
+        html += `<em>•</em> Сильне падіння — ринок у стресі<br>`;
+        html += `<em>•</em> Можливий переліт до безпечних активів<br>`;
+        html += `<em>•</em> Ризик каскадної ліквідації<br>`;
+      }
     } else {
-      html += `<em>BTC недоступний (CORS)</em><br>`;
+      html += `<em>BTC недоступний (CORS блок)</em><br>`;
     }
-    html += `<br><span class="src">CoinGecko · ринковий сентимент</span>`;
+    html += `<br><strong>Контекст:</strong><br>`;
+    html += `<em>•</em> Економіка = метаболізм цивілізації<br>`;
+    html += `<em>•</em> BTC — проксі ринкового сентименту, не ВВП<br>`;
+    html += `<em>•</em> Реальний ВВП світу: ~$105 трлн<br>`;
+    html += `<br><span class="src">Джерело: CoinGecko · ринковий сентимент</span>`;
   } else if (scaleId === 'infra') {
-    html += `<br><strong>ІНФРАСТРУКТУРА · ДЕТАЛІ</strong><br>`;
+    html += `<br><strong>ІНФРАСТРУКТУРА · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Повітряний транспорт:</strong><br>`;
     html += `Літаків у повітрі: <span class="num">${fmt(input.flights)}</span><br>`;
-    html += `OSM changesets: <span class="num">${input.osm}</span><br>`;
-    html += `<br><strong>Мобільність:</strong><br>`;
-    html += `<em>•</em> Повітряний: ${input.flights > 15000 ? '<em style="color: var(--amber);">високий</em>' : '<em>помірний</em>'}<br>`;
-    html += `<em>•</em> Картографія: ${input.osm > 80 ? '<em>висока</em>' : '<em>середня</em>'}<br>`;
-    html += `<br><span class="src">OpenSky + OpenStreetMap</span>`;
+    const flightPct = (input.flights / 20000 * 100).toFixed(0);
+    html += `Завантаженість повітряного простору: <span class="num">${flightPct}%</span><br>`;
+    html += `Оцінка: ${input.flights > 15000 ? '<em style="color: var(--amber);">висока активність</em>' : input.flights > 10000 ? '<em style="color: var(--teal);">помірна</em>' : '<em>знижена</em>'}<br>`;
+    html += `<br><strong>Картографічна активність (OSM):</strong><br>`;
+    html += `Changesets: <span class="num">${input.osm}</span><br>`;
+    html += `Оцінка: ${input.osm > 80 ? '<em>висока</em>' : '<em>середня</em>'}<br>`;
+    html += `<br><strong>Оцінка циркуляції:</strong><br>`;
+    html += `<em>•</em> Інфраструктура = судини цивілізації<br>`;
+    html += `<em>•</em> ${input.flights > 12000 ? 'Глобальна логістика функціонує нормально' : 'Можливі обмеження'}<br>`;
+    html += `<em>•</em> ${input.flights > 15000 ? 'Посилена циркуляція — економіка активна' : 'Стабільна циркуляція'}<br>`;
+    html += `<br><span class="src">Джерела: OpenSky Network · OpenStreetMap API</span>`;
   } else if (scaleId === 'knowledge') {
-    html += `<br><strong>ЗНАННЯ · ДЕТАЛІ</strong><br>`;
-    html += `Wiki потік: <span class="num">${STATE.wikiRate.toFixed(1)}</span> Гц<br>`;
+    html += `<br><strong>ЗНАННЯ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Wikipedia-потік (живий SSE):</strong><br>`;
+    html += `Потік: <span class="num">${STATE.wikiRate.toFixed(1)}</span> Гц (ред/сек)<br>`;
     html += `За хвилину: <span class="num">${(STATE.wikiRate * 60).toFixed(0)}</span><br>`;
     html += `За годину: <span class="num">${fmt(Math.round(STATE.wikiRate * 3600))}</span><br>`;
     html += `За день: <span class="num">${fmt(Math.round(STATE.wikiRate * 86400))}</span><br>`;
+    html += `<br><strong>Z-score активності:</strong><br>`;
+    const wikiZ = zScore(STATE.wikiRate, 'knowledge');
+    const wikiColor = Math.abs(wikiZ) >= 2 ? 'var(--crimson)' : Math.abs(wikiZ) >= 1.5 ? 'var(--amber)' : 'var(--teal)';
+    html += `Порівняно з нормою: <span style="color: ${wikiColor};">${wikiZ >= 0 ? '+' : ''}${wikiZ.toFixed(2)}σ</span><br>`;
     html += `<br><strong>Інтерпретація:</strong><br>`;
-    if (STATE.wikiRate > 15) html += `<em>•</em> Підвищена — можливо велика подія<br>`;
-    else if (STATE.wikiRate > 5) html += `<em>•</em> Нормальна пізнавальна активність<br>`;
-    else html += `<em>•</em> Знижена активність<br>`;
-    html += `<br><span class="src">Wikimedia SSE · всі мовні розділи</span>`;
-  } else if (scaleId === 'info') {
-    html += `<br><strong>ІНФОРМАЦІЯ · ДЕТАЛІ</strong><br>`;
-    html += `Hacker News: <span class="num">${input.hnCount}</span><br>`;
-    html += `Stack Overflow: <span class="num">${input.seCount}</span><br>`;
-    html += `RSS новин: <span class="num">${STATE.news.length}</span><br>`;
-    html += `Джерел новин: <span class="num">${new Set(STATE.news.map(n => n.source)).size}</span><br>`;
-    if (STATE.news.length > 0) {
-      html += `<br><strong>Останні:</strong><br>`;
-      STATE.news.slice(0, 3).forEach(n => {
-        html += `<em>•</em> <strong style="color: ${n.color};">${n.source}</strong> — ${n.title.slice(0, 55)}${n.title.length > 55 ? '...' : ''}<br>`;
-      });
+    if (STATE.wikiRate > 15) {
+      html += `<em>•</em> Підвищена — можливо велика подія в світі<br>`;
+      html += `<em>•</em> Кореляція з інформаційними потоками<br>`;
+    } else if (STATE.wikiRate > 5) {
+      html += `<em>•</em> Нормальна пізнавальна активність<br>`;
+      html += `<em>•</em> Колективна пам'ть оновлюється штатно<br>`;
+    } else {
+      html += `<em>•</em> Знижена активність<br>`;
+      html += `<em>•</em> Можливо: тихий час доби, технічні проблеми<br>`;
     }
-    html += `<br><span class="src">HN + SO + RSS (BBC/Reuters/AlJazeera/DW/Guardian)</span>`;
+    html += `<br><strong>Контекст:</strong><br>`;
+    html += `<em>•</em> Вікіпедія = довготривала пам'ять цивілізації<br>`;
+    html += `<em>•</em> Кожне редагування — нейронний імпульс<br>`;
+    html += `<em>•</em> ~300 мовних розділів глобально<br>`;
+    html += `<br><span class="src">Джерело: Wikimedia SSE stream · всі мовні розділи</span>`;
+  } else if (scaleId === 'info') {
+    html += `<br><strong>ІНФОРМАЦІЯ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>Інформаційні потоки:</strong><br>`;
+    html += `Hacker News: <span class="num">${input.hnCount}</span> постів<br>`;
+    html += `Stack Overflow: <span class="num">${input.seCount}</span> питань<br>`;
+    html += `RSS новин: <span class="num">${STATE.news.length}</span> статей<br>`;
+    const newsSources = new Set(STATE.news.map(n => n.source));
+    html += `Джерел новин: <span class="num">${newsSources.size}</span> (${Array.from(newsSources).join(', ')})<br>`;
+    html += `<br><strong>Останні новини (топ-5):</strong><br>`;
+    if (STATE.news.length > 0) {
+      STATE.news.slice(0, 5).forEach((n, i) => {
+        const age = Math.floor((Date.now() - n.pubTs) / 60000);
+        const ageStr = age < 1 ? 'щойно' : age < 60 ? age + ' хв' : Math.floor(age / 60) + ' год';
+        html += `<em>${i + 1}.</em> <strong style="color: ${n.color};">${n.source}</strong> (${ageStr}) — ${n.title.slice(0, 60)}${n.title.length > 60 ? '...' : ''}<br>`;
+      });
+    } else {
+      html += `<em>Новини ще завантажуються...</em><br>`;
+    }
+    html += `<br><strong>Контекст:</strong><br>`;
+    html += `<em>•</em> Інформація = нервова система цивілізації<br>`;
+    html += `<em>•</em> RSS — традиційний канал, HN — тех-спільнота<br>`;
+    html += `<em>•</em> Швидкість поширення = швидкість реакції<br>`;
+    html += `<br><span class="src">Джерела: HN + SO + RSS (BBC/Reuters/AlJazeera/DW/Guardian)</span>`;
   } else if (scaleId === 'ai') {
-    html += `<br><strong>ШІ · КОГНІЦІЯ · ДЕТАЛІ</strong><br>`;
-    html += `GitHub подій: <span class="num">${input.ghEvents}</span><br>`;
+    html += `<br><strong>ШІ · КОГНІЦІЯ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    html += `<strong>GitHub активність:</strong><br>`;
+    html += `Подій (останній fetch): <span class="num">${input.ghEvents}</span><br>`;
     html += `Релізів: <span class="num">${input.ghReleases}</span><br>`;
-    html += `<br><strong>Типи подій:</strong><br>`;
+    html += `<br><strong>Розподіл за типами:</strong><br>`;
     const types = cachedGh.types || {};
-    const typeNames = { PushEvent: 'Push', CreateEvent: 'Create', WatchEvent: 'Watch', IssueCommentEvent: 'Коментарі', IssuesEvent: 'Issues', PullRequestEvent: 'PR', ReleaseEvent: 'Релізи', ForkEvent: 'Форки' };
-    Object.entries(types).slice(0, 6).forEach(([type, count]) => {
+    const typeNames = { PushEvent: 'Push (комміти)', CreateEvent: 'Create (гілки/теги)', WatchEvent: 'Watch (зірки)', IssueCommentEvent: 'Коментарі issues', IssuesEvent: 'Issues', PullRequestEvent: 'Pull Requests', ReleaseEvent: 'Релізи', ForkEvent: 'Форки', DeleteEvent: 'Delete', PublicEvent: 'Public' };
+    Object.entries(types).sort((a, b) => b[1] - a[1]).forEach(([type, count]) => {
       html += `<em>•</em> ${typeNames[type] || type}: <span class="num">${count}</span><br>`;
     });
-    html += `<br><strong>Оцінка:</strong> ШІ — нова когнітивна кора. ${input.ghReleases > 0 ? '<em>Кластер активний.</em>' : ''}<br>`;
-    html += `<br><span class="src">GitHub Events API</span>`;
+    html += `<br><strong>Оцінка когнітивної активності:</strong><br>`;
+    html += `<em>•</em> ШІ-сектор — нова когнітивна кора цивілізації<br>`;
+    html += `<em>•</em> GitHub-активність = швидкість формування кори<br>`;
+    if (input.ghReleases > 0) html += `<em>•</em> <strong>Нові релізи</strong> — кластер активний<br>`;
+    if (input.ghEvents > 250) html += `<em>•</em> Висока інтенсивність розробки<br>`;
+    else html += `<em>•</em> Помірна інтенсивність<br>`;
+    html += `<br><span class="src">Джерело: GitHub Events API · публічна активність</span>`;
   }
 
-  html += `<br><br><strong>Зв'язки:</strong><br>`;
+  // ── ЗВ'ЯЗКИ ──────────────────────────────────────────────────────
+  html += `<br><br><strong>Зв'язки з іншими шкалами:</strong><br>`;
   const relatedLinks = STATE.links.filter(l => l.from === scale.name || l.to === scale.name);
   if (relatedLinks.length > 0) {
-    relatedLinks.slice(0, 4).forEach(l => {
+    relatedLinks.slice(0, 5).forEach(l => {
       const other = l.from === scale.name ? l.to : l.from;
-      html += `<em>•</em> ${l.direction} <strong>${other}</strong>: <span class="num">${l.strength.toFixed(2)}</span><br>`;
+      const lagStr = l.lag ? ` (лаг ${l.lag > 0 ? '+' : ''}${l.lag})` : '';
+      const grangerStr = l.causality !== 'none' ? ` · Granger: ${l.causality === 'AB' ? '→' : l.causality === 'BA' ? '←' : '↔'}` : '';
+      html += `<em>•</em> ${l.direction} <strong>${other}</strong>: <span class="num">${l.strength.toFixed(2)}</span>${lagStr}${grangerStr} · p=${l.pValue?.toFixed(3)}<br>`;
     });
   } else {
-    html += `<em>Зв'язки ще формуються...</em><br>`;
+    html += `<em>Зв'язки ще формуються (потрібно більше спостережень)...</em><br>`;
   }
+
+  // ── ІСТОРІЯ З ПАМ'ЯТІ ────────────────────────────────────────────
+  const obsCount = baselineCache[scaleId]?.length || 0;
+  html += `<br><strong>Пам'ять:</strong> <span class="num">${obsCount}</span> точок у поточному вікні<br>`;
 
   agentMessage(html, 'bot', scale.name);
 }
+
 function reportLab() {
   const projects = Object.values(STATE.labProjects);
   if (!projects.length) {
@@ -2612,40 +2715,6 @@ function reportForecast() {
   else html += `<em>•</em> Недостатньо даних для впевненого прогнозу<br>`;
   html += `<br><span class="src">AR(1) модель · X_t = c + φ·X_{t-1} + e · довірчий інтервал 95%</span>`;
   agentMessage(html, 'discovery', 'ПРОГНОЗ');
-}
-
-function reportSimulation() {
-  const scales = STATE.scales;
-  if (!scales.length) {
-    agentMessage('Дані ще завантажуються. Зачекайте...', 'bot', 'СИМУЛЯЦІЯ');
-    return;
-  }
-  const links = STATE.links;
-  let html = `<strong>СИМУЛЯЦІЇ · ЩО БУДЕ, ЯКЩО...</strong><br><br>`;
-  html += `<strong>Граф зв'язків:</strong> ${links.length} активних<br><br>`;
-  // Сценарій 1: сонячна буря Kp=7
-  html += `<strong>СЦЕНАРІЙ 1 · СОЛЯРНА БУРА (Kp=7)</strong><br>`;
-  const shock1 = simulateShock('space', -30, links);
-  shock1.forEach(e => {
-    const scale = SCALE_MAP[e.scaleId];
-    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span>${e.direct ? ' (прямий)' : ` (через ${SCALE_MAP[e.via]?.name || e.via}, глибина ${e.depth})`}<br>`;
-  });
-  // Сценарій 2: землетрус M6
-  html += `<br><strong>СЦЕНАРІЙ 2 · ЗЕМЛЕТРУС M6</strong><br>`;
-  const shock2 = simulateShock('planet', -25, links);
-  shock2.forEach(e => {
-    const scale = SCALE_MAP[e.scaleId];
-    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span>${e.direct ? ' (прямий)' : ' (опосередкований)'}<br>`;
-  });
-  // Сценарій 3: сплеск wiki
-  html += `<br><strong>СЦЕНАРІЙ 3 · ВІКІ-СПЛЕСК (+30)</strong><br>`;
-  const shock3 = simulateShock('knowledge', +30, links);
-  shock3.forEach(e => {
-    const scale = SCALE_MAP[e.scaleId];
-    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span><br>`;
-  });
-  html += `<br><span class="src">Модель: BFS по графу зв'язків · decay=0.6 · maxDepth=3</span>`;
-  agentMessage(html, 'discovery', 'СИМУЛЯЦІЯ');
 }
 
 function reportParsers() {
