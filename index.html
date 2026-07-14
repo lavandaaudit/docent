@@ -1,0 +1,3274 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ІБОНАРІУМ — Агент-дослідник</title>
+<meta name="description" content="ІБОНАРІУМ — автономний агент-дослідник цифрового двійника людства. Спостерігає, аналізує, шукає зв'язки, алертить." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ════════════════════════════════════════════════════════════════════════
+   ІБОНАРІУМ — Агент-дослідник
+   Не дашборд. Не вітрина. Суб'єкт, що пише.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --void: #050608;
+  --void-deep: #020304;
+  --void-panel: #08090C;
+  --soft-white: #ECEEF2;
+  --soft-white-dim: #B8BCC8;
+  --soft-white-faint: #6E7280;
+  --soft-white-ghost: #3a3a40;
+  --amber: #F5A623;
+  --amber-soft: #FFC76B;
+  --deep-blue: #2E7BD6;
+  --deep-blue-soft: #5A9FE8;
+  --teal: #2EC4B6;
+  --crimson: #E63946;
+  --gold: #D4A24C;
+  --border: rgba(236, 238, 242, 0.06);
+  --border-strong: rgba(245, 166, 35, 0.25);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--void);
+  color: var(--soft-white);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+  letter-spacing: 0.01em;
+}
+.mono { font-family: 'JetBrains Mono', monospace; }
+.label-tiny { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--soft-white-faint); }
+
+/* ─── Canvas-фон (туманність, тихіша) ─── */
+#bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ─── LAYOUT ─── */
+.app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ─── Header ─── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(5, 6, 8, 0.75);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 12px rgba(245, 166, 35, 0.9);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.brand-title { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.32em; color: var(--amber); text-shadow: 0 0 14px rgba(245, 166, 35, 0.5); }
+.brand-sub { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--soft-white-faint); margin-top: 2px; }
+.header-stats { display: flex; align-items: center; gap: 22px; padding-left: 22px; margin-left: 22px; border-left: 1px solid var(--border); }
+.header-stat-label { font-family: 'JetBrains Mono', monospace; font-size: 7px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--soft-white-faint); }
+.header-stat-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--soft-white); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.header-status { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 2px; }
+.header-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 6px rgba(46, 196, 182, 0.7); animation: pulse 2s ease-in-out infinite; }
+.header-status-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal); }
+
+/* ─── Main grid ─── */
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  gap: 6px;
+  padding: 6px;
+  min-height: 0;
+}
+.col { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+
+/* ─── Секції ─── */
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 8px 6px 4px;
+  flex-shrink: 0;
+}
+.section-title { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--soft-white-dim); }
+.section-sub { font-family: 'JetBrains Mono', monospace; font-size: 7px; color: var(--soft-white-ghost); letter-spacing: 0.1em; }
+
+/* ─── ЛІВА КОЛОНКА — меню категорій ─── */
+.col-left { overflow-y: auto; padding-right: 3px; }
+.col-left::-webkit-scrollbar, .col-right::-webkit-scrollbar { width: 3px; }
+.col-left::-webkit-scrollbar-thumb, .col-right::-webkit-scrollbar-thumb { background: rgba(245, 166, 35, 0.2); border-radius: 2px; }
+
+.cat-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(8, 9, 12, 0.7);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent, var(--amber));
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--soft-white-dim);
+  text-align: left;
+  width: 100%;
+}
+.cat-btn:hover {
+  border-color: var(--accent, var(--amber));
+  background: rgba(245, 166, 35, 0.05);
+  color: var(--soft-white);
+  transform: translateX(2px);
+}
+.cat-btn-num { font-size: 9px; color: var(--soft-white-ghost); letter-spacing: 0.06em; min-width: 18px; }
+.cat-btn-name { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, var(--amber)); flex: 1; }
+.cat-btn-val { font-size: 9px; color: var(--soft-white); font-variant-numeric: tabular-nums; }
+
+/* ─── НОВИНИ ─── */
+.news-item {
+  padding: 5px 8px;
+  background: rgba(8, 9, 12, 0.7);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--news-color, var(--soft-white-ghost));
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+.news-item:hover {
+  border-color: var(--news-color, var(--amber));
+  background: rgba(245, 166, 35, 0.04);
+}
+.news-source { font-family: 'JetBrains Mono', monospace; font-size: 7px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--news-color, var(--soft-white-dim)); margin-bottom: 2px; }
+.news-title { font-family: 'Inter', sans-serif; font-size: 10px; color: var(--soft-white); line-height: 1.35; }
+.news-time { font-family: 'JetBrains Mono', monospace; font-size: 7px; color: var(--soft-white-faint); margin-top: 2px; }
+
+/* ─── ЦЕНТР — чат з агентом ─── */
+.col-center {
+  background: rgba(8, 9, 12, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(5, 6, 8, 0.5);
+  flex-shrink: 0;
+}
+.agent-bar-left { display: flex; align-items: center; gap: 14px; }
+.agent-avatar {
+  width: 72px; height: 72px;
+  position: relative;
+  flex-shrink: 0;
+}
+.agent-head {
+  width: 60px; height: 60px;
+  border: 2.5px solid var(--amber);
+  border-radius: 12px;
+  position: absolute;
+  left: 50%; top: 0;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.25), rgba(245, 166, 35, 0.05));
+  box-shadow: 0 0 24px rgba(245, 166, 35, 0.5), inset 0 0 12px rgba(245, 166, 35, 0.1);
+  animation: avatar-float 3s ease-in-out infinite;
+}
+@keyframes avatar-float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-4px); }
+}
+.agent-eye {
+  width: 12px; height: 12px;
+  background: var(--amber);
+  border-radius: 50%;
+  position: absolute;
+  top: 18px;
+  box-shadow: 0 0 10px var(--amber), inset 0 0 3px rgba(255,255,255,0.4);
+  transition: transform 0.12s ease-out;
+}
+.agent-eye.l { left: 13px; }
+.agent-eye.r { right: 13px; }
+.agent-eye::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 4px; height: 4px;
+  background: #fff;
+  border-radius: 50%;
+}
+.agent-mouth {
+  width: 24px; height: 3px;
+  background: var(--amber);
+  position: absolute;
+  bottom: 13px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  box-shadow: 0 0 5px var(--amber);
+}
+.agent-body {
+  width: 48px; height: 18px;
+  border: 2.5px solid var(--amber);
+  border-radius: 6px;
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(245, 166, 35, 0.1);
+  box-shadow: 0 0 14px rgba(245, 166, 35, 0.3);
+}
+.agent-body::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px; height: 6px;
+  background: var(--amber);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--amber);
+  animation: pulse 2s ease-in-out infinite;
+}
+.agent-name { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; letter-spacing: 0.16em; color: var(--amber); }
+.agent-role { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--soft-white-faint); margin-top: 2px; }
+.agent-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.agent-state-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 5px rgba(46, 196, 182, 0.7); animation: pulse 2s ease-in-out infinite; }
+.agent-state-text { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--teal); }
+
+/* ─── Повідомлення ─── */
+.chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.chat::-webkit-scrollbar { width: 4px; }
+.chat::-webkit-scrollbar-thumb { background: rgba(245, 166, 35, 0.2); border-radius: 2px; }
+
+.msg {
+  max-width: 88%;
+  padding: 9px 13px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: 0;
+  animation: msg-fade-in 0.5s ease-out forwards;
+}
+@keyframes msg-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.msg.bot {
+  align-self: flex-start;
+  background: rgba(245, 166, 35, 0.06);
+  border-left: 2px solid var(--amber);
+  color: var(--soft-white);
+}
+.msg.bot-alert {
+  align-self: flex-start;
+  background: rgba(230, 57, 70, 0.08);
+  border-left: 2px solid var(--crimson);
+  color: var(--soft-white);
+}
+.msg.bot-discovery {
+  align-self: flex-start;
+  background: rgba(46, 196, 182, 0.06);
+  border-left: 2px solid var(--teal);
+  color: var(--soft-white);
+}
+.msg.user {
+  align-self: flex-end;
+  background: rgba(46, 123, 214, 0.08);
+  border-left: 2px solid var(--deep-blue);
+  color: var(--soft-white);
+  text-align: left;
+}
+
+.msg-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  color: var(--soft-white-faint);
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.msg-meta-tag { color: var(--amber); margin-right: 6px; }
+.msg-alert .msg-meta-tag { color: var(--crimson); }
+.msg-discovery .msg-meta-tag { color: var(--teal); }
+
+.msg-body { color: var(--soft-white); }
+.msg-body strong { color: var(--amber); font-weight: 600; }
+.msg-body em { color: var(--teal); font-style: normal; font-weight: 500; }
+.msg-body .num { font-family: 'JetBrains Mono', monospace; color: var(--amber); font-variant-numeric: tabular-nums; }
+.msg-body .src { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--soft-white-faint); letter-spacing: 0.06em; }
+
+/* ─── Поле вводу + швидкі кнопки ─── */
+.input-zone {
+  border-top: 1px solid var(--border);
+  background: rgba(5, 6, 8, 0.5);
+  flex-shrink: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quick-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.quick-btn {
+  padding: 5px 10px;
+  background: rgba(245, 166, 35, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--soft-white-dim);
+  transition: all 0.2s ease;
+}
+.quick-btn:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(245, 166, 35, 0.1);
+}
+.input-row {
+  display: flex;
+  gap: 6px;
+}
+.input-field {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(8, 9, 12, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--soft-white);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.input-field:focus { border-color: var(--amber); }
+.input-field::placeholder { color: var(--soft-white-faint); font-size: 11px; }
+.send-btn {
+  padding: 8px 16px;
+  background: var(--amber);
+  border: none;
+  border-radius: 2px;
+  color: var(--void);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.send-btn:hover { background: var(--amber-soft); box-shadow: 0 0 12px rgba(245, 166, 35, 0.4); }
+
+/* ─── ПРАВА КОЛОНКА — потік подій ─── */
+.col-right { overflow-y: auto; padding-left: 3px; }
+
+.event-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.event-item {
+  padding: 6px 9px;
+  background: rgba(8, 9, 12, 0.7);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--ev-color, var(--soft-white-ghost));
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  animation: msg-in 0.3s ease-out;
+}
+.event-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.event-type { font-size: 7px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ev-color, var(--soft-white-dim)); }
+.event-ts { font-size: 7px; color: var(--soft-white-faint); font-variant-numeric: tabular-nums; }
+.event-title { font-size: 9px; color: var(--soft-white); line-height: 1.35; }
+.event-meta { font-size: 7px; color: var(--soft-white-faint); letter-spacing: 0.04em; margin-top: 2px; }
+
+/* ─── ЛОГ ПАРСЕРІВ ─── */
+.log-row {
+  display: grid;
+  grid-template-columns: 50px 14px 90px 70px 1fr;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  border-left: 2px solid var(--log-color, var(--soft-white-ghost));
+  background: rgba(255,255,255,0.01);
+  animation: msg-in 0.25s ease-out;
+}
+.log-ts { color: var(--soft-white-faint); font-variant-numeric: tabular-nums; }
+.log-status { font-weight: 700; text-align: center; }
+.log-src { color: var(--soft-white-dim); letter-spacing: 0.04em; }
+.log-val { color: var(--soft-white); font-weight: 500; font-variant-numeric: tabular-nums; }
+.log-detail { color: var(--soft-white-faint); font-size: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .main { grid-template-columns: 1fr; }
+  .col-left, .col-right { display: none; }
+  .header-stats { display: none; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div style="display: flex; align-items: center;">
+      <div class="brand">
+        <div class="brand-dot"></div>
+        <div>
+          <div class="brand-title">ІБОНАРІУМ</div>
+          <div class="brand-sub">АГЕНТ-ДОСЛІДНИК · v5.0</div>
+        </div>
+      </div>
+      <div class="header-stats">
+        <div><div class="header-stat-label">ЧАС UTC</div><div class="header-stat-val" id="stat-utc">--:--:--</div></div>
+        <div><div class="header-stat-label">СПОСТЕРЕЖЕНЬ</div><div class="header-stat-val" id="stat-obs" style="color: var(--teal);">0</div></div>
+        <div><div class="header-stat-label">ДЖЕРЕЛА</div><div class="header-stat-val" id="stat-src" style="color: var(--teal);">0/14</div></div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="header-status-dot"></div>
+      <div class="header-status-text" id="header-state">СПOSTЕРЕЖЕННЯ</div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ЛІВА — меню категорій -->
+    <aside class="col col-left">
+      <div class="section-header">
+        <span class="section-title">КАТЕГОРІЇ</span>
+        <span class="section-sub">ТЕМИ</span>
+      </div>
+      <div id="cat-list" style="display: flex; flex-direction: column; gap: 4px;"></div>
+
+      <div class="section-header">
+        <span class="section-title">НОВИНИ</span>
+        <span class="section-sub" id="news-count">0</span>
+      </div>
+      <div id="news-list" style="display: flex; flex-direction: column; gap: 3px;"></div>
+
+      <div class="section-header">
+        <span class="section-title">ЗВ'ЯЗКИ</span>
+        <span class="section-sub">КОРИДОР</span>
+      </div>
+      <div id="links-list" style="display: flex; flex-direction: column; gap: 3px; padding: 0 4px;"></div>
+    </aside>
+
+    <!-- ЦЕНТР — чат з агентом -->
+    <section class="col-center">
+      <div class="agent-bar">
+        <div class="agent-bar-left">
+          <div class="agent-avatar">
+            <div class="agent-head">
+              <div class="agent-eye l"></div>
+              <div class="agent-eye r"></div>
+              <div class="agent-mouth"></div>
+            </div>
+            <div class="agent-body"></div>
+          </div>
+          <div>
+            <div class="agent-name">ІБОНАРІУМ</div>
+            <div class="agent-role">ЦИФРОВИЙ ДОСЛІДНИК · ЖИВИЙ</div>
+          </div>
+        </div>
+        <div class="agent-state">
+          <div class="agent-state-dot"></div>
+          <div class="agent-state-text" id="agent-state">АНАЛІЗУЄ</div>
+        </div>
+      </div>
+
+      <div class="chat" id="chat">
+        <div class="msg bot">
+          <div class="msg-meta"><span class="msg-meta-tag">ІБОНАРІУМ</span>ініціалізація</div>
+          <div class="msg-body">Вітаю. Я — <strong>ІБОНАРІУМ</strong>, цифровий дослідник людства. Спостерігаю за цивілізацією через <em>14 OSINT-джерел</em> у реальному часі. Запитуйте — або чекайте, я сам повідомлю про аномалії та знахідки.</div>
+        </div>
+      </div>
+
+      <div class="input-zone">
+        <div class="quick-row">
+          <button class="quick-btn" data-q="стан">Що відбувається?</button>
+          <button class="quick-btn" data-q="аномалії">Аномалії</button>
+          <button class="quick-btn" data-q="звязки">Зв'язки</button>
+          <button class="quick-btn" data-q="новини">Новини</button>
+          <button class="quick-btn" data-q="пам'ять">Пам'ять</button>
+          <button class="quick-btn" data-q="парсери">Парсери</button>
+          <button class="quick-btn" data-q="населення">Населення</button>
+          <button class="quick-btn" data-q="космос">Космос</button>
+          <button class="quick-btn" data-q="прогноз">Прогноз</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ПРАВА — потік подій -->
+    <aside class="col col-right">
+      <div class="section-header">
+        <span class="section-title">ЖУРНАЛ ПАРСЕРІВ</span>
+        <span class="section-sub" id="log-count">0</span>
+      </div>
+      <div id="log-feed" style="display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 6px;">Запуск парсерів...</div>
+      </div>
+
+      <div class="section-header">
+        <span class="section-title">ПОТІК ПОДІЙ</span>
+        <span class="section-sub" id="event-count">0</span>
+      </div>
+      <div class="event-feed" id="event-feed">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 8px;">Чекаю на події...</div>
+      </div>
+    </aside>
+
+  </main>
+</div>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════════════════════
+// ІБОНАРІУМ — Агент-дослідник
+// Не дашборд. Суб'єкт, що спостерігає, аналізує, шукає зв'язки, алертить.
+// ════════════════════════════════════════════════════════════════════════════
+const $ = (id) => document.getElementById(id);
+const uid = () => Math.random().toString(36).slice(2, 10);
+const now = () => Date.now();
+const TAU = Math.PI * 2;
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+// ─── СТАН ─────────────────────────────────────────────────────────────────
+const STATE = {
+  world: null,
+  scales: [],
+  organism: null,
+  events: [],          // активні події (права колонка)
+  observations: 0,     // лічильник спостережень
+  sourcesOnline: 0,
+  labProjects: {},   // дані про проєкти лабораторії
+  log: [],           // лог парсерів у реальному часі
+  news: [],          // новинна стрічка
+  bootTs: now(),
+  lastRefresh: 0,
+  wikiRate: 0,
+  // Історія для виявлення зв'язків
+  history: {},         // {scaleId: [{ts, value}]}
+  // Знайдені зв'язки
+  links: [],
+  // Останні алерти (щоб не повторювати)
+  recentAlerts: new Set(),
+};
+window.STATE = STATE;
+
+// ════════════════════════════════════════════════════════════════════════════
+// INDEXEDDB · PERSISTENT MEMORY
+// Система пам'ятає все між сесіями. Кожне спостереження, аномалія, зв'язок,
+// повідомлення зберігається з timestamp. Через тиждень агент може сказати:
+// "Тиждень тому wiki-активність була 8 Гц, зараз 18 — зростання в 2.25 рази".
+// ════════════════════════════════════════════════════════════════════════════
+const DB_NAME = 'ibonarium';
+const DB_VERSION = 1;
+let db = null;
+
+const DB_STORES = {
+  observations: { keyPath: 'id', indexes: ['ts', 'scaleId', 'source'] },
+  anomalies:    { keyPath: 'id', indexes: ['ts', 'type', 'severity'] },
+  links:        { keyPath: 'id', indexes: ['ts', 'from', 'to'] },
+  messages:     { keyPath: 'id', indexes: ['ts', 'type'] },
+  snapshots:    { keyPath: 'id', indexes: ['ts'] },
+  hypotheses:   { keyPath: 'id', indexes: ['ts', 'status'] },
+};
+
+function dbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      Object.entries(DB_STORES).forEach(([name, def]) => {
+        if (!d.objectStoreNames.contains(name)) {
+          const store = d.createObjectStore(name, { keyPath: def.keyPath });
+          def.indexes.forEach(idx => store.createIndex(idx, idx, { unique: false }));
+        }
+      });
+    };
+    req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbPut(store, value) {
+  return new Promise((resolve) => {
+    if (!db) return resolve(false);
+    try {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(value);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch { resolve(false); }
+  });
+}
+
+function dbPutMany(store, values) {
+  return new Promise((resolve) => {
+    if (!db || !values.length) return resolve(false);
+    try {
+      const tx = db.transaction(store, 'readwrite');
+      const os = tx.objectStore(store);
+      values.forEach(v => os.put(v));
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch { resolve(false); }
+  });
+}
+
+function dbGetAll(store, limit = 1000) {
+  return new Promise((resolve) => {
+    if (!db) return resolve([]);
+    try {
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).openCursor(null, 'prev');
+      const results = [];
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor && results.length < limit) { results.push(cursor.value); cursor.continue(); }
+        else resolve(results);
+      };
+      req.onerror = () => resolve([]);
+    } catch { resolve([]); }
+  });
+}
+
+function dbCount(store) {
+  return new Promise((resolve) => {
+    if (!db) return resolve(0);
+    try {
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(0);
+    } catch { resolve(0); }
+  });
+}
+
+function dbGetByIndex(store, indexName, value, limit = 1000) {
+  return new Promise((resolve) => {
+    if (!db) return resolve([]);
+    try {
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).index(indexName).getAll(IDBKeyRange.only(value), limit);
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch { resolve([]); }
+  });
+}
+
+function dbGetSince(store, ts) {
+  return new Promise((resolve) => {
+    if (!db) return resolve([]);
+    try {
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).index('ts').getAll(IDBKeyRange.lowerBound(ts));
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch { resolve([]); }
+  });
+}
+
+function dbClear(store) {
+  return new Promise((resolve) => {
+    if (!db) return resolve(false);
+    try {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).clear();
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch { resolve(false); }
+  });
+}
+
+// ─── Високорівневі функції пам'яті ──────────────────────────────────────────
+async function memSaveObservation(scaleId, value, source, extra = {}) {
+  const obs = {
+    id: `${scaleId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ts: Date.now(),
+    scaleId,
+    value,
+    source,
+    ...extra,
+  };
+  await dbPut('observations', obs);
+  return obs;
+}
+
+async function memSaveAnomaly(anomaly) {
+  const a = {
+    id: anomaly.id || `anom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ts: anomaly.ts || Date.now(),
+    type: anomaly.type || 'unknown',
+    severity: anomaly.severity || 'warn',
+    title: anomaly.title,
+    desc: anomaly.desc,
+    resolved: false,
+  };
+  await dbPut('anomalies', a);
+  return a;
+}
+
+async function memSaveLink(link) {
+  const l = {
+    id: `${link.fromId}-${link.toId}-${Date.now()}`,
+    ts: Date.now(),
+    from: link.from,
+    to: link.to,
+    fromId: link.fromId,
+    toId: link.toId,
+    strength: link.strength,
+    direction: link.direction,
+  };
+  await dbPut('links', l);
+  return l;
+}
+
+async function memSaveMessage(msg) {
+  const m = {
+    id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ts: msg.ts || Date.now(),
+    type: msg.type || 'bot',
+    tag: msg.tag || '',
+    text: msg.text,
+  };
+  await dbPut('messages', m);
+  return m;
+}
+
+async function memSaveSnapshot(scales, organism) {
+  const snap = {
+    id: `snap-${Date.now()}`,
+    ts: Date.now(),
+    scales: scales.map(s => ({ id: s.id, index: s.index, value: s.value, status: s.status })),
+    organism: organism ? { mode: organism.mode, stress: organism.stress, coherence: organism.coherence } : null,
+  };
+  await dbPut('snapshots', snap);
+  return snap;
+}
+
+async function memStats() {
+  const [obs, anoms, links, msgs, snaps] = await Promise.all([
+    dbCount('observations'),
+    dbCount('anomalies'),
+    dbCount('links'),
+    dbCount('messages'),
+    dbCount('snapshots'),
+  ]);
+  // Перше спостереження — для "з пам'яті відновлено з D дати"
+  const firstObs = await dbGetAll('observations', 1);
+  const firstTs = firstObs.length ? firstObs[0].ts : null;
+  return { obs, anoms, links, msgs, snaps, firstTs };
+}
+
+async function memGetObservationsForScale(scaleId, sinceTs = 0) {
+  const all = await dbGetSince('observations', sinceTs);
+  return all.filter(o => o.scaleId === scaleId);
+}
+
+// ─── Очищення старих даних (старіше 90 днів) ────────────────────────────────
+async function memCleanup() {
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  ['observations', 'anomalies', 'links', 'snapshots'].forEach(async (store) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction(store, 'readwrite');
+      const idx = tx.objectStore(store).index('ts');
+      const req = idx.openCursor(IDBKeyRange.upperBound(cutoff));
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) { cursor.delete(); cursor.continue(); }
+      };
+    } catch {}
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// СТАТИСТИКА · Z-SCORE АНОМАЛІЇ + BASELINE
+// Замість жорстких порогів — реальна статистика відхилень від власної норми.
+// Аномалія = z-score > 2σ від ковзного вікна за останню годину.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Ковзне вікно baseline (in-memory, швидше за IndexedDB для частого доступу)
+const BASELINE_WINDOW = 60; // кількість точок у вікні (60 * 10с = 10 хв)
+const baselineCache = {}; // {scaleId: [{ts, value}]}
+
+function baselinePush(scaleId, value) {
+  if (!baselineCache[scaleId]) baselineCache[scaleId] = [];
+  baselineCache[scaleId].push({ ts: Date.now(), value });
+  if (baselineCache[scaleId].length > BASELINE_WINDOW) baselineCache[scaleId].shift();
+}
+
+function baselineStats(scaleId) {
+  const arr = baselineCache[scaleId] || [];
+  if (arr.length < 5) return null; // потрібно мінімум 5 точок
+  const vals = arr.map(p => p.value);
+  const n = vals.length;
+  const mean = vals.reduce((a, b) => a + b, 0) / n;
+  const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const std = Math.sqrt(variance);
+  return { mean, std, n, min: Math.min(...vals), max: Math.max(...vals) };
+}
+
+function zScore(value, scaleId) {
+  const stats = baselineStats(scaleId);
+  if (!stats || stats.std === 0) return 0;
+  return (value - stats.mean) / stats.std;
+}
+
+// Виявлення статистичних аномалій
+function detectStatAnomalies(scales) {
+  const anomalies = [];
+  scales.forEach(s => {
+    const z = zScore(s.index, s.id);
+    const absZ = Math.abs(z);
+    if (absZ >= 2.5 && baselineCache[s.id] && baselineCache[s.id].length >= 10) {
+      const stats = baselineStats(s.id);
+      const direction = z > 0 ? 'зростання' : 'падіння';
+      const severity = absZ >= 4 ? 'critical' : absZ >= 3 ? 'warn' : 'info';
+      anomalies.push({
+        scaleId: s.id,
+        scaleName: s.name,
+        type: 'statistical',
+        title: `Статистична аномалія: ${s.name}`,
+        desc: `${direction} ${s.name} на ${absZ.toFixed(1)}σ (z-score). Поточне: ${s.index.toFixed(1)}, норма: ${stats.mean.toFixed(1)}±${stats.std.toFixed(1)}.`,
+        severity,
+        zScore: z,
+        current: s.index,
+        mean: stats.mean,
+        std: stats.std,
+        color: severity === 'critical' ? '#E63946' : '#D4A24C',
+      });
+    }
+  });
+  return anomalies;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ЛАГОВІ КОРЕЛЯЦІЇ + GRANGER CAUSALITY
+// Замість простого Пірсона — крос-кореляція з лагами -6...+6 точок.
+// Granger causality: чи допомагає X прогнозувати Y краще за сам Y alone.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Крос-кореляція з лагами
+// Повертає: { maxR, maxLag, rValues: [{lag, r}] }
+function crossCorrelation(a, b, maxLag = 6) {
+  const n = Math.min(a.length, b.length);
+  if (n < 8) return { maxR: 0, maxLag: 0, rValues: [] };
+  const aSlice = a.slice(-n);
+  const bSlice = b.slice(-n);
+  const results = [];
+  let bestR = 0, bestLag = 0;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    let count = 0;
+    let sumA = 0, sumB = 0, sumAB = 0, sumA2 = 0, sumB2 = 0;
+    for (let i = Math.max(0, lag); i < Math.min(n, n - lag); i++) {
+      const ai = aSlice[i];
+      const bi = bSlice[i - lag];
+      if (ai === undefined || bi === undefined) continue;
+      sumA += ai; sumB += bi;
+      sumAB += ai * bi;
+      sumA2 += ai * ai; sumB2 += bi * bi;
+      count++;
+    }
+    if (count < 5) continue;
+    const meanA = sumA / count, meanB = sumB / count;
+    const cov = sumAB / count - meanA * meanB;
+    const varA = sumA2 / count - meanA * meanA;
+    const varB = sumB2 / count - meanB * meanB;
+    const r = (varA > 0 && varB > 0) ? cov / Math.sqrt(varA * varB) : 0;
+    results.push({ lag, r });
+    if (Math.abs(r) > Math.abs(bestR)) { bestR = r; bestLag = lag; }
+  }
+  return { maxR: bestR, maxLag: bestLag, rValues: results };
+}
+
+// Перевірка значущості через permutation test
+// H0: X та Y незалежні. Якщо |r| з реальних даних > 95% пермутацій — значущий.
+function permutationTest(a, b, lag = 0, permutations = 100) {
+  const n = Math.min(a.length, b.length);
+  if (n < 8) return { significant: false, pValue: 1 };
+  // Реальний r з лагом
+  const realR = laggedCorrelation(a, b, lag);
+  // Пермутації
+  let count = 0;
+  const bShuffled = b.slice(-n);
+  for (let p = 0; p < permutations; p++) {
+    // Shuffle B
+    for (let i = bShuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bShuffled[i], bShuffled[j]] = [bShuffled[j], bShuffled[i]];
+    }
+    const permR = laggedCorrelation(a.slice(-n), bShuffled, lag);
+    if (Math.abs(permR) >= Math.abs(realR)) count++;
+  }
+  const pValue = count / permutations;
+  return { significant: pValue < 0.05, pValue, realR };
+}
+
+function laggedCorrelation(a, b, lag = 0) {
+  const n = Math.min(a.length, b.length);
+  let count = 0, sumA = 0, sumB = 0, sumAB = 0, sumA2 = 0, sumB2 = 0;
+  for (let i = Math.max(0, lag); i < Math.min(n, n - lag); i++) {
+    const ai = a[i];
+    const bi = b[i - lag];
+    if (ai === undefined || bi === undefined) continue;
+    sumA += ai; sumB += bi;
+    sumAB += ai * bi;
+    sumA2 += ai * ai; sumB2 += bi * bi;
+    count++;
+  }
+  if (count < 5) return 0;
+  const meanA = sumA / count, meanB = sumB / count;
+  const cov = sumAB / count - meanA * meanB;
+  const varA = sumA2 / count - meanA * meanA;
+  const varB = sumB2 / count - meanB * meanB;
+  return (varA > 0 && varB > 0) ? cov / Math.sqrt(varA * varB) : 0;
+}
+
+// Granger causality test
+// H0: X не Granger-cause Y. Порівнюємо AR(p) на Y alone vs AR(p) з X.
+// F-statistic > критичного → X Granger-causes Y.
+function grangerCausality(x, y, p = 2) {
+  const n = Math.min(x.length, y.length);
+  if (n < p + 5) return { causes: false, fStat: 0, pValue: 1 };
+  const xs = x.slice(-n);
+  const ys = y.slice(-n);
+  // Проста регресія: Y_t = a0 + sum(a_i * Y_{t-i}) + e (restricted)
+  // vs Y_t = a0 + sum(a_i * Y_{t-i}) + sum(b_j * X_{t-j}) + e (unrestricted)
+  // Спрощено: порівнюємо RSS
+  const samples = [];
+  for (let t = p; t < n; t++) {
+    const yLags = [];
+    for (let i = 1; i <= p; i++) yLags.push(ys[t - i]);
+    const xLags = [];
+    for (let j = 1; j <= p; j++) xLags.push(xs[t - j]);
+    samples.push({ y: ys[t], yLags, xLags });
+  }
+  if (samples.length < p + 3) return { causes: false, fStat: 0, pValue: 1 };
+  // Restricted: лише Y lags
+  let rssR = 0;
+  const meanY = samples.reduce((a, s) => a + s.y, 0) / samples.length;
+  samples.forEach(s => { rssR += (s.y - meanY) ** 2; });
+  // Unrestricted: Y + X lags — спрощено через кореляцію X з залишками
+  let rssU = rssR;
+  const xContribution = crossCorrelation(
+    samples.map(s => s.y - meanY),
+    samples.flatMap(s => s.xLags).filter(v => v !== undefined)
+  );
+  if (xContribution.maxR !== 0) {
+    rssU = rssR * (1 - xContribution.maxR * xContribution.maxR);
+  }
+  // F-statistic
+  const df1 = p;
+  const df2 = samples.length - 2 * p - 1;
+  if (df2 <= 0 || rssU <= 0) return { causes: false, fStat: 0, pValue: 1 };
+  const fStat = ((rssR - rssU) / df1) / (rssU / df2);
+  // Спрощена p-value (F-distribution approximation)
+  const pValue = Math.exp(-fStat / 3);
+  return { causes: fStat > 3.0 && pValue < 0.1, fStat, pValue };
+}
+
+// Знаходження лагових зв'язків між усіма парами шкал
+function findLaggedLinks(scalesData) {
+  const links = [];
+  const ids = Object.keys(scalesData);
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = scalesData[ids[i]];
+      const b = scalesData[ids[j]];
+      if (a.length < 8 || b.length < 8) continue;
+      const cc = crossCorrelation(a, b, 6);
+      if (Math.abs(cc.maxR) > 0.5) {
+        // Перевірити значущість
+        const perm = permutationTest(a, b, cc.maxLag, 50);
+        if (perm.significant) {
+          // Granger causality в обидва напрямки
+          const gAB = grangerCausality(a, b, 2);
+          const gBA = grangerCausality(b, a, 2);
+          let direction = '↔';
+          let causality = 'none';
+          if (gAB.causes && !gBA.causes) { direction = '→'; causality = 'AB'; }
+          else if (gBA.causes && !gAB.causes) { direction = '←'; causality = 'BA'; }
+          else if (gAB.causes && gBA.causes) { direction = '↔'; causality = 'both'; }
+          links.push({
+            fromId: ids[i],
+            toId: ids[j],
+            from: SCALE_MAP[ids[i]]?.name || ids[i],
+            to: SCALE_MAP[ids[j]]?.name || ids[j],
+            strength: Math.abs(cc.maxR),
+            r: cc.maxR,
+            lag: cc.maxLag,
+            direction,
+            causality,
+            grangerF: Math.max(gAB.fStat, gBA.fStat),
+            pValue: perm.pValue,
+            significant: true,
+          });
+        }
+      }
+    }
+  }
+  links.sort((a, b) => b.strength - a.strength);
+  return links.slice(0, 12);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ПРОГНОЗИ ARIMA + СИМУЛЯЦІЇ
+// ARIMA(1,1,0) — авторегресія першого порядку з інтегруванням.
+// Прогноз на N кроків вперед з довірчим інтервалом.
+// Симуляції — що буде, якщо змінити змінну (через граф зв'язків).
+// ════════════════════════════════════════════════════════════════════════════
+
+// AR(1) модель: X_t = c + phi * X_{t-1} + e
+// Оцінка phi через OLS
+function fitAR1(series) {
+  const n = series.length;
+  if (n < 5) return { phi: 0, c: 0, residVar: 0, valid: false };
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 1; i < n; i++) {
+    const x = series[i - 1];
+    const y = series[i];
+    sumX += x; sumY += y;
+    sumXY += x * y;
+    sumX2 += x * x;
+  }
+  const m = n - 1;
+  const meanX = sumX / m, meanY = sumY / m;
+  const phi = (sumXY / m - meanX * meanY) / (sumX2 / m - meanX * meanX || 1);
+  const c = meanY - phi * meanX;
+  // Залишки
+  let residVar = 0;
+  for (let i = 1; i < n; i++) {
+    const pred = c + phi * series[i - 1];
+    residVar += (series[i] - pred) ** 2;
+  }
+  residVar /= m;
+  return { phi, c, residVar, valid: true, n };
+}
+
+// Прогноз AR(1) на N кроків
+function forecastAR1(series, steps = 6) {
+  const model = fitAR1(series);
+  if (!model.valid) return { forecasts: [], lower: [], upper: [], confidence: 0 };
+  const forecasts = [];
+  const lower = [];
+  const upper = [];
+  let lastVal = series[series.length - 1];
+  let cumVar = 0;
+  for (let h = 1; h <= steps; h++) {
+    const pred = model.c + model.phi * lastVal;
+    cumVar += model.residVar * (h);  // Спрощено: дисперсія росте лінійно
+    const se = Math.sqrt(cumVar);
+    forecasts.push(pred);
+    lower.push(pred - 1.96 * se);
+    upper.push(pred + 1.96 * se);
+    lastVal = pred;
+  }
+  // Довіра моделі — на основі R²
+  const meanY = series.reduce((a, b) => a + b, 0) / series.length;
+  let ssTot = 0, ssRes = 0;
+  for (let i = 1; i < series.length; i++) {
+    const pred = model.c + model.phi * series[i - 1];
+    ssRes += (series[i] - pred) ** 2;
+    ssTot += (series[i] - meanY) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+  return { forecasts, lower, upper, confidence: Math.max(0, Math.min(1, r2)), model, r2 };
+}
+
+// Симуляція "що буде, якщо" — через граф зв'язків
+// Якщо змінити scaleId на delta, які інші шкали зреагують і наскільки
+function simulateShock(scaleId, delta, links = []) {
+  const effects = [{ scaleId, delta, direct: true }];
+  const visited = new Set([scaleId]);
+  // BFS по графу зв'язків
+  let frontier = [{ id: scaleId, delta }];
+  let depth = 0;
+  const maxDepth = 3;
+  while (frontier.length > 0 && depth < maxDepth) {
+    const nextFrontier = [];
+    frontier.forEach(({ id, delta: curDelta }) => {
+      links.forEach(link => {
+        let target = null;
+        if (link.fromId === id && !visited.has(link.toId)) target = link.toId;
+        else if (link.toId === id && !visited.has(link.fromId)) target = link.fromId;
+        if (target) {
+          visited.add(target);
+          // Ефект = delta * strength * decay^depth
+          const effect = curDelta * link.strength * Math.pow(0.6, depth + 1);
+          effects.push({ scaleId: target, delta: effect, direct: false, depth: depth + 1, via: id });
+          nextFrontier.push({ id: target, delta: effect });
+        }
+      });
+    });
+    frontier = nextFrontier;
+    depth++;
+  }
+  return effects;
+}
+
+// Прогноз фази організму на основі поточних трендів
+function forecastPhase(scales, organism, steps = 6) {
+  const forecasts = {};
+  SCALES.forEach(s => {
+    const series = (baselineCache[s.id] || []).map(p => p.value);
+    if (series.length >= 8) {
+      forecasts[s.id] = forecastAR1(series, steps);
+    }
+  });
+  // Прогноз стресу через зважену формулу
+  const fSpace = forecasts.space?.forecasts[steps - 1] ?? scales.find(s => s.id === 'space')?.index ?? 50;
+  const fPlanet = forecasts.planet?.forecasts[steps - 1] ?? scales.find(s => s.id === 'planet')?.index ?? 50;
+  const fInfo = forecasts.info?.forecasts[steps - 1] ?? scales.find(s => s.id === 'info')?.index ?? 50;
+  const fStress = (100 - fPlanet) * 0.5 + (100 - fSpace) * 0.3 + (100 - fInfo) * 0.2;
+  // Прогноз фази
+  let fMode = 'STABILITY';
+  if (fStress > 60) fMode = 'FRACTURE';
+  else if (fStress > 40) fMode = 'TENSION';
+  else if (fInfo > 70) fMode = 'SYNC';
+  else if (fInfo > 60) fMode = 'EXPANSION';
+  return { forecasts, fStress, fMode, confidence: Object.keys(forecasts).length > 0 ? Object.values(forecasts).reduce((a, f) => a + (f.confidence || 0), 0) / Object.keys(forecasts).length : 0 };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// МЕТАПІЗНАННЯ · СИСТЕМА ОЦІНЮЄ ВЛАСНІ МОДЕЛІ
+// Зберігає прогнози, перевіряє точність через N кроків, відкидає слабкі гіпотези.
+// "Я знаю що я знаю. Я знаю чого я не знаю."
+// ════════════════════════════════════════════════════════════════════════════
+
+// Реєстр прогнозів для перевірки
+// { id, ts, scaleId, predicted, actual, error, horizon, model }
+const forecastRegistry = [];
+
+// Зберегти прогноз для перевірки
+function saveForecastForVerification(scaleId, predicted, horizon, model = 'AR1') {
+  const f = {
+    id: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ts: Date.now(),
+    scaleId,
+    predicted,
+    actual: null,
+    error: null,
+    horizon,
+    model,
+    verified: false,
+  };
+  forecastRegistry.push(f);
+  // Зберегти в IndexedDB
+  dbPut('hypotheses', { ...f, type: 'forecast', status: 'pending' });
+  // Обмежити розмір
+  if (forecastRegistry.length > 200) forecastRegistry.shift();
+  return f;
+}
+
+// Перевірити прогнози, термін яких настав
+function verifyForecasts(scales) {
+  const nowTs = Date.now();
+  forecastRegistry.forEach(f => {
+    if (f.verified) return;
+    const elapsed = nowTs - f.ts;
+    const horizonMs = f.horizon * 10000; // 10с per step
+    if (elapsed >= horizonMs) {
+      const scale = scales.find(s => s.id === f.scaleId);
+      if (scale) {
+        f.actual = scale.index;
+        f.error = Math.abs(f.predicted - f.actual);
+        f.verified = true;
+        f.mape = f.actual !== 0 ? (f.error / Math.abs(f.actual)) * 100 : 0; // Mean Absolute Percentage Error
+        dbPut('hypotheses', { ...f, type: 'forecast', status: 'verified' });
+      }
+    }
+  });
+}
+
+// Метрики точності моделей
+function getModelMetrics() {
+  const verified = forecastRegistry.filter(f => f.verified);
+  if (verified.length === 0) return { total: 0, verified: 0, mae: 0, mape: 0, rmse: 0, accuracy: 0 };
+  const errors = verified.map(f => f.error);
+  const mapes = verified.map(f => f.mape || 0);
+  const mae = errors.reduce((a, b) => a + b, 0) / errors.length;
+  const mape = mapes.reduce((a, b) => a + b, 0) / mapes.length;
+  const rmse = Math.sqrt(errors.reduce((a, b) => a + b * b, 0) / errors.length);
+  // Точність — частка прогнозів з MAPE < 20%
+  const accuracy = verified.filter(f => (f.mape || 100) < 20).length / verified.length;
+  // По шкалах
+  const byScale = {};
+  verified.forEach(f => {
+    if (!byScale[f.scaleId]) byScale[f.scaleId] = { count: 0, mae: 0, mape: 0 };
+    byScale[f.scaleId].count++;
+    byScale[f.scaleId].mae += f.error;
+    byScale[f.scaleId].mape += f.mape || 0;
+  });
+  Object.keys(byScale).forEach(k => {
+    byScale[k].mae /= byScale[k].count;
+    byScale[k].mape /= byScale[k].count;
+  });
+  return { total: forecastRegistry.length, verified: verified.length, mae, mape, rmse, accuracy, byScale };
+}
+
+// Життєвий цикл гіпотез
+// { statement, confidence, status: 'pending'|'confirmed'|'rejected', ts, verifiedTs }
+const hypothesisRegistry = [];
+
+function generateAutoHypothesis(scales, organism, links) {
+  // Автоматична генерація гіпотез на основі поточних даних
+  const hypotheses = [];
+  // Гіпотеза 1: якщо wiki-активність висока і AI активний — когнітивний кластер
+  const knowledge = scales.find(s => s.id === 'knowledge');
+  const ai = scales.find(s => s.id === 'ai');
+  if (knowledge && ai && knowledge.index > 60 && ai.index > 40) {
+    hypotheses.push({
+      statement: 'Когнітивний кластер (ЗНАННЯ ↔ ШІ) активний — посилення інноваційного циклу',
+      confidence: 0.7,
+      type: 'cognitive',
+    });
+  }
+  // Гіпотеза 2: якщо стрес високий і когерентність падає — фазовий перехід
+  if (organism && organism.stress > 50 && organism.coherence < 50) {
+    hypotheses.push({
+      statement: 'Ризик фазового переходу — стрес зростає при падінні когерентності',
+      confidence: 0.65,
+      type: 'phase',
+    });
+  }
+  // Гіпотеза 3: якщо є сильний зв'язок — причинність
+  if (links.length > 0 && links[0].causality !== 'none') {
+    const top = links[0];
+    hypotheses.push({
+      statement: `${top.from} Granger-causes ${top.to} (F=${top.grangerF.toFixed(2)})`,
+      confidence: Math.min(0.9, top.strength),
+      type: 'causality',
+    });
+  }
+  return hypotheses;
+}
+
+// Концептуальний дрейф — виявлення коли модель стає неточною
+function detectConceptDrift() {
+  const metrics = getModelMetrics();
+  if (metrics.verified < 10) return { drift: false, reason: 'Недостатньо даних' };
+  // Якщо MAPE зростає — можливий дрейф
+  const recent = forecastRegistry.filter(f => f.verified).slice(-10);
+  const older = forecastRegistry.filter(f => f.verified).slice(-20, -10);
+  if (older.length < 5) return { drift: false, reason: 'Недостатньо історії' };
+  const recentMAPE = recent.reduce((a, f) => a + (f.mape || 0), 0) / recent.length;
+  const olderMAPE = older.reduce((a, f) => a + (f.mape || 0), 0) / older.length;
+  const drift = recentMAPE > olderMAPE * 1.5;
+  return { drift, recentMAPE, olderMAPE, reason: drift ? `MAPE зросла з ${olderMAPE.toFixed(1)}% до ${recentMAPE.toFixed(1)}%` : 'Стабільна точність' };
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ПЛАГІННА АРХІТЕКТУРА ПАРСЕРІВ · JSON-конфіг
+// Замість жорстко закодованих функцій — універсальний движок, що читає конфіг.
+// Додавання нового джерела = 10 рядків JSON, не потрібно писати код.
+// ════════════════════════════════════════════════════════════════════════════
+
+const PARSER_CONFIGS = [
+  {
+    id: 'worldometers',
+    name: 'WORLDOMETERS',
+    category: 'population',
+    type: 'proxy_html',
+    url: 'https://www.worldometers.info/',
+    proxy: 'allorigins',
+    cadence: 30,
+    extract: { regex: /class="rts-counter"\s+rel="([^"]+)"[^>]*>([^<]*)</g, keyGroup: 1, valGroup: 2 },
+    fields: { population: 'population', births: 'births', deaths: 'deaths' },
+    fallback: { interpolate: true, baseValue: 8118000000, rate: { birthsPerSec: 4.3, deathsPerSec: 2.0 } },
+  },
+  {
+    id: 'usgs',
+    name: 'USGS',
+    category: 'planet',
+    type: 'json',
+    url: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson',
+    cadence: 60,
+    extract: { path: 'features', map: { mag: 'properties.mag', place: 'properties.place', depth: 'geometry.coordinates.2', tsunami: 'properties.tsunami' } },
+    scale: 'planet',
+    metric: { type: 'count', filter: { mag: { gte: 1 } }, label: 'Землетруси/год' },
+  },
+  {
+    id: 'eonet',
+    name: 'NASA EONET',
+    category: 'planet',
+    type: 'json',
+    url: 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=50',
+    cadence: 300,
+    extract: { path: 'events', map: { title: 'title', type: 'categories.0.id' } },
+    scale: 'planet',
+    metric: { type: 'count', label: 'Активні катастрофи' },
+  },
+  {
+    id: 'noaa_kp',
+    name: 'NOAA SWPC',
+    category: 'space',
+    type: 'json',
+    url: 'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json',
+    cadence: 180,
+    extract: { path: '$last', map: { kp: 'kp' } },
+    scale: 'space',
+    metric: { type: 'value', field: 'kp', label: 'Kp-індекс' },
+  },
+  {
+    id: 'github',
+    name: 'GITHUB',
+    category: 'ai',
+    type: 'json',
+    url: 'https://api.github.com/events',
+    cadence: 60,
+    headers: { Accept: 'application/vnd.github+json' },
+    extract: { path: '$root', map: { type: 'type' }, groupBy: 'type' },
+    scale: 'ai',
+    metric: { type: 'count', label: 'GitHub подій' },
+  },
+  {
+    id: 'hackernews',
+    name: 'HACKER NEWS',
+    category: 'info',
+    type: 'json',
+    url: 'https://hacker-news.firebaseio.com/v0/newstories.json',
+    cadence: 30,
+    extract: { path: '$root', type: 'array' },
+    scale: 'info',
+    metric: { type: 'count', label: 'HN постів' },
+  },
+  {
+    id: 'opensky',
+    name: 'OPENSKY',
+    category: 'infra',
+    type: 'proxy_json',
+    url: 'https://opensky-network.org/api/states/all?lamin=-60&lomin=-180&lamax=60&lomax=180',
+    proxy: 'corsproxy',
+    cadence: 60,
+    extract: { path: 'states', type: 'array' },
+    scale: 'infra',
+    metric: { type: 'count', label: 'Літаків у повітрі' },
+    fallback: { value: 14000 },
+  },
+  {
+    id: 'osm',
+    name: 'OPENSTREETMAP',
+    category: 'infra',
+    type: 'json',
+    url: 'https://api.openstreetmap.org/api/0.6/changesets.json?limit=100',
+    cadence: 60,
+    extract: { path: 'changesets', type: 'array' },
+    scale: 'infra',
+    metric: { type: 'count', label: 'OSM changesets' },
+  },
+  {
+    id: 'stackexchange',
+    name: 'STACK EXCHANGE',
+    category: 'info',
+    type: 'json',
+    url: 'https://api.stackexchange.com/2.3/questions?pagesize=100&order=desc&sort=creation&site=stackoverflow&filter=default',
+    cadence: 60,
+    extract: { path: 'items', type: 'array' },
+    scale: 'info',
+    metric: { type: 'count', label: 'SO питань' },
+  },
+  {
+    id: 'coingecko',
+    name: 'COINGECKO',
+    category: 'economy',
+    type: 'json',
+    url: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true',
+    cadence: 120,
+    extract: { path: 'bitcoin', map: { price: 'usd', change24h: 'usd_24h_change' } },
+    scale: 'economy',
+    metric: { type: 'value', field: 'price', label: 'BTC ціна' },
+  },
+];
+
+// Кеш плагінних парсерів (для TTL)
+const pluginCache = {};
+const pluginTs = {};
+
+// Проксі-URL конструктор
+function buildProxyUrl(proxy, url) {
+  if (proxy === 'allorigins') return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  if (proxy === 'corsproxy') return 'https://corsproxy.io/?url=' + encodeURIComponent(url);
+  return url;
+}
+
+// Універсальний екстрактор значень по dot-path
+function getValueByPath(obj, path) {
+  if (!path || path === '$root') return obj;
+  if (path === '$last') return Array.isArray(obj) && obj.length ? obj[obj.length - 1] : obj;
+  return path.split('.').reduce((acc, key) => {
+    if (acc === null || acc === undefined) return undefined;
+    const idx = parseInt(key);
+    return Number.isInteger(idx) ? acc[idx] : acc[key];
+  }, obj);
+}
+
+// Універсальний рушій парсера
+async function runParser(config) {
+  const cacheKey = config.id;
+  const now_ts = Date.now();
+  const ttl = (config.cadence || 60) * 1000;
+
+  // Перевірити кеш
+  if (pluginCache[cacheKey] && (now_ts - (pluginTs[cacheKey] || 0) < ttl)) {
+    return pluginCache[cacheKey];
+  }
+
+  try {
+    const url = config.proxy ? buildProxyUrl(config.proxy, config.url) : config.url;
+    const opts = { signal: AbortSignal.timeout(8000) };
+    if (config.headers) opts.headers = config.headers;
+
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(`${config.id} ${res.status}`);
+
+    let result = { id: config.id, name: config.name, ts: now_ts, status: 'ok', data: null, metric: null };
+
+    if (config.type === 'json' || config.type === 'proxy_json') {
+      const data = await res.json();
+      // Витягти за конфігом
+      if (config.extract?.path) {
+        const extracted = getValueByPath(data, config.extract.path);
+        if (config.extract.map) {
+          // Маппінг полів
+          if (Array.isArray(extracted)) {
+            result.data = extracted.map(item => {
+              const mapped = {};
+              Object.entries(config.extract.map).forEach(([key, path]) => {
+                mapped[key] = getValueByPath(item, path);
+              });
+              return mapped;
+            });
+          } else if (extracted && typeof extracted === 'object') {
+            const mapped = {};
+            Object.entries(config.extract.map).forEach(([key, path]) => {
+              mapped[key] = getValueByPath(extracted, path);
+            });
+            result.data = mapped;
+          } else {
+            result.data = extracted;
+          }
+        } else {
+          result.data = extracted;
+        }
+      } else {
+        result.data = data;
+      }
+      // Якщо groupBy — згрупувати
+      if (config.extract?.groupBy && Array.isArray(result.data)) {
+        const groups = {};
+        result.data.forEach(item => {
+          const key = item[config.extract.groupBy];
+          groups[key] = (groups[key] || 0) + 1;
+        });
+        result.data = groups;
+      }
+    } else if (config.type === 'proxy_html' || config.type === 'html') {
+      const html = await res.text();
+      if (config.extract?.regex) {
+        const matches = {};
+        let m;
+        const re = new RegExp(config.extract.regex.source, config.extract.regex.flags || 'g');
+        while ((m = re.exec(html))) {
+          if (config.extract.keyGroup && config.extract.valGroup) {
+            const key = m[config.extract.keyGroup];
+            const val = m[config.extract.valGroup].replace(/[, ]/g, '');
+            matches[key] = parseInt(val, 10) || 0;
+          }
+        }
+        result.data = matches;
+      } else {
+        result.data = html.length;
+      }
+    }
+
+    // Розрахунок метрики
+    if (config.metric) {
+      if (config.metric.type === 'count') {
+        if (Array.isArray(result.data)) {
+          let arr = result.data;
+          if (config.metric.filter) {
+            Object.entries(config.metric.filter).forEach(([key, cond]) => {
+              if (cond.gte !== undefined) arr = arr.filter(item => (item[key] || 0) >= cond.gte);
+            });
+          }
+          result.metric = arr.length;
+        } else if (typeof result.data === 'object') {
+          result.metric = Object.keys(result.data).length;
+        } else {
+          result.metric = 0;
+        }
+      } else if (config.metric.type === 'value') {
+        result.metric = result.data?.[config.metric.field] ?? 0;
+      }
+    }
+
+    pluginCache[cacheKey] = result;
+    pluginTs[cacheKey] = now_ts;
+    return result;
+  } catch (err) {
+    // Fallback
+    if (config.fallback) {
+      const fb = config.fallback;
+      let data = null, metric = 0;
+      if (fb.interpolate) {
+        // Інтерполяція населення
+        const d = new Date(); d.setUTCHours(0, 0, 0, 0);
+        const elapsed = (Date.now() - d.getTime()) / 1000;
+        data = {
+          population: Math.round(fb.baseValue + (fb.rate.birthsPerSec - fb.rate.deathsPerSec) * elapsed),
+          birthsToday: Math.round(fb.rate.birthsPerSec * elapsed),
+          deathsToday: Math.round(fb.rate.deathsPerSec * elapsed),
+        };
+        metric = data.population;
+      } else if (fb.value !== undefined) {
+        metric = fb.value;
+        data = { fallback: fb.value };
+      }
+      return { id: config.id, name: config.name, ts: now_ts, status: 'fallback', data, metric, error: String(err).slice(0, 60) };
+    }
+    return { id: config.id, name: config.name, ts: now_ts, status: 'error', data: null, metric: 0, error: String(err).slice(0, 60) };
+  }
+}
+
+// Запустити всі парсери паралельно
+async function runAllParsers() {
+  const results = {};
+  await Promise.all(PARSER_CONFIGS.map(async (config) => {
+    results[config.id] = await runParser(config);
+  }));
+  return results;
+}
+
+// Список конфігів для UI/звітів
+function getParserConfigs() {
+  return PARSER_CONFIGS;
+}
+
+// Додати новий парсер на льоту (для UI додавання)
+function addParser(config) {
+  if (!PARSER_CONFIGS.find(p => p.id === config.id)) {
+    PARSER_CONFIGS.push(config);
+    return true;
+  }
+  return false;
+}
+
+// ─── ШКАЛИ як категорії ────────────────────────────────────────────────────
+const SCALES = [
+  { id: 'space',     num: '01', name: 'КОСМОС',     fn: 'ЕМ ПОЛЕ',     accent: '#5A9FE8' },
+  { id: 'planet',    num: '02', name: 'ПЛАНЕТА',    fn: 'СЕРЕДОВИЩЕ',  accent: '#E63946' },
+  { id: 'humanity',  num: '03', name: 'ЛЮДСТВО',    fn: 'ЯДРО',        accent: '#F5A623' },
+  { id: 'energy',    num: '04', name: 'ЕНЕРГІЯ',    fn: 'КРОВООБІГ',   accent: '#FFC76B' },
+  { id: 'economy',   num: '05', name: 'ЕКОНОМІКА',  fn: 'МЕТАБОЛІЗМ',  accent: '#D4A24C' },
+  { id: 'infra',     num: '06', name: 'ІНФРА',      fn: 'СУДИНИ',      accent: '#2EC4B6' },
+  { id: 'knowledge', num: '07', name: 'ЗНАННЯ',     fn: 'ПАМ\'ЯТЬ',    accent: '#2E7BD6' },
+  { id: 'info',      num: '08', name: 'ІНФОРМАЦІЯ', fn: 'НЕРВИ',       accent: '#2E7BD6' },
+  { id: 'ai',        num: '09', name: 'ШІ',         fn: 'КОГНІЦІЯ',    accent: '#2EC4B6' },
+];
+const SCALE_MAP = Object.fromEntries(SCALES.map(s => [s.id, s]));
+SCALES.forEach(s => { STATE.history[s.id] = []; });
+
+// ─── ПАРСЕРИ (14 джерел) ───────────────────────────────────────────────────
+const BASE_POP = 8_118_000_000, BIRTHS_PER_SEC = 4.3, DEATHS_PER_SEC = 2.0;
+let cachedSnap = null, snapTs = 0;
+
+function interpolateSnap() {
+  if (cachedSnap) {
+    const dt = (now() - cachedSnap.ts) / 1000;
+    return { ...cachedSnap,
+      population: Math.round(cachedSnap.population + (BIRTHS_PER_SEC - DEATHS_PER_SEC) * dt),
+      birthsToday: Math.round(cachedSnap.birthsToday + BIRTHS_PER_SEC * dt),
+      deathsToday: Math.round(cachedSnap.deathsToday + DEATHS_PER_SEC * dt), ts: now() };
+  }
+  const d = new Date(); d.setUTCHours(0, 0, 0, 0);
+  const elapsed = (now() - d.getTime()) / 1000;
+  const snap = { population: Math.round(BASE_POP + (BIRTHS_PER_SEC - DEATHS_PER_SEC) * elapsed),
+    birthsToday: Math.round(BIRTHS_PER_SEC * elapsed), deathsToday: Math.round(DEATHS_PER_SEC * elapsed), ts: now() };
+  cachedSnap = snap; snapTs = now(); return snap;
+}
+
+async function fetchWorld() {
+  const fallback = interpolateSnap();
+  if (now() - snapTs < 30000 && cachedSnap) return interpolateSnap();
+  try {
+    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://www.worldometers.info/'), { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('proxy');
+    const html = await res.text();
+    const counters = {};
+    const re = /class="rts-counter"\s+rel="([^"]+)"[^>]*>([^<]*)</g;
+    let m;
+    while ((m = re.exec(html))) counters[m[1]] = m[2].replace(/[, ]/g, '');
+    const snap = { population: num(counters.population) || fallback.population,
+      birthsToday: num(counters.births) || fallback.birthsToday,
+      deathsToday: num(counters.deaths) || fallback.deathsToday, ts: now() };
+    cachedSnap = snap; snapTs = now(); return snap;
+  } catch { return fallback; }
+}
+function num(s) { if (!s) return 0; const n = parseInt(String(s).replace(/[^\d]/g, ''), 10); return Number.isFinite(n) ? n : 0; }
+
+let wikiEs = null, wikiEvCount = 0, wikiBytesAccum = 0, lastWikiBucket = now(), wikiRate = 0;
+function subscribeWiki() {
+  try {
+    wikiEs = new EventSource('https://stream.wikimedia.org/v2/stream/recentchange');
+    wikiEs.onmessage = (msg) => {
+      try { const d = JSON.parse(msg.data); if (d.type !== 'edit' && d.type !== 'new') return;
+        wikiEvCount++;
+        if (typeof d.length?.new === 'number' && typeof d.length?.old === 'number') wikiBytesAccum += Math.abs(d.length.new - d.length.old);
+      } catch {}
+    };
+    wikiEs.onerror = () => {};
+  } catch {}
+}
+function sampleWiki() {
+  const dt = (now() - lastWikiBucket) / 1000;
+  if (dt > 1) { wikiRate = wikiEvCount / dt; wikiEvCount = 0; wikiBytesAccum = 0; lastWikiBucket = now(); }
+  return wikiRate || 0;
+}
+
+let cachedQuakes = [], quakesTs = 0;
+async function fetchQuakes() {
+  if (now() - quakesTs < 60000 && cachedQuakes.length) return cachedQuakes;
+  try { const res = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('usgs'); const data = await res.json();
+    cachedQuakes = (data.features || []).map(f => ({ id: f.id, ts: now(), title: f.properties?.place || 'невідоме місце', mag: f.properties?.mag || 0, depth: f.geometry?.coordinates?.[2] || 0, tsunami: f.properties?.tsunami || 0 })).sort((a, b) => b.mag - a.mag);
+    quakesTs = now(); return cachedQuakes;
+  } catch { return cachedQuakes; }
+}
+
+let cachedEonet = [], eonetTs = 0;
+async function fetchEonet() {
+  if (now() - eonetTs < 300000 && cachedEonet.length) return cachedEonet;
+  try { const res = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=50', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('eonet'); const data = await res.json();
+    cachedEonet = (data.events || []).map(e => ({ id: e.id, ts: now(), title: e.title || 'невідома подія', type: e.categories?.[0]?.id || 'event' }));
+    eonetTs = now(); return cachedEonet;
+  } catch { return cachedEonet; }
+}
+
+let cachedKp = 2, cachedFlares = 0, swpcTs = 0;
+async function fetchSpaceWx() {
+  if (now() - swpcTs < 180000) return { kp: cachedKp, flares: cachedFlares };
+  let kp = cachedKp, flares = cachedFlares;
+  try { const [kpRes, flareRes] = await Promise.allSettled([
+      fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json', { signal: AbortSignal.timeout(6000) }),
+      fetch('https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json', { signal: AbortSignal.timeout(6000) })]);
+    if (kpRes.status === 'fulfilled' && kpRes.value.ok) { const data = await kpRes.value.json();
+      if (Array.isArray(data) && data.length) { const last = data[data.length - 1];
+        const v = typeof last?.kp === 'number' ? last.kp : Number(last?.estimated_kp) || cachedKp; if (Number.isFinite(v)) kp = v; } }
+    if (flareRes.status === 'fulfilled' && flareRes.value.ok) { const data = await flareRes.value.json();
+      if (Array.isArray(data)) { const cutoff = now() - 86400000;
+        flares = data.filter(f => { const t = Date.parse(f.time_tag || ''); return Number.isFinite(t) && t > cutoff && /^[MX]/.test(f.class || ''); }).length; } }
+    cachedKp = kp; cachedFlares = flares; swpcTs = now();
+  } catch {}
+  return { kp: cachedKp || 2, flares: cachedFlares || 0 };
+}
+
+let cachedGh = { count: 0, types: {}, releases: 0 }, ghTs = 0;
+async function fetchGithub() {
+  if (now() - ghTs < 60000 && cachedGh.count) return cachedGh;
+  try { const res = await fetch('https://api.github.com/events', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('gh'); const data = await res.json();
+    const types = {}; for (const e of data || []) types[e.type] = (types[e.type] || 0) + 1;
+    cachedGh = { count: data?.length || 0, types, releases: types.ReleaseEvent || 0 }; ghTs = now(); return cachedGh;
+  } catch { return cachedGh; }
+}
+
+let cachedHn = { ids: [], newestTitle: null }, hnTs = 0;
+async function fetchHn() {
+  if (now() - hnTs < 30000 && cachedHn.ids.length) return { count: cachedHn.ids.length, newestTitle: cachedHn.newestTitle };
+  try { const res = await fetch('https://hacker-news.firebaseio.com/v0/newstories.json', { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error('hn'); const ids = await res.json(); cachedHn.ids = ids;
+    if (ids[0]) { const itemRes = await fetch('https://hacker-news.firebaseio.com/v0/item/' + ids[0] + '.json', { signal: AbortSignal.timeout(6000) });
+      const item = await itemRes.json(); cachedHn.newestTitle = item?.title; }
+    hnTs = now(); return { count: ids.length, newestTitle: cachedHn.newestTitle };
+  } catch { return { count: cachedHn.ids.length, newestTitle: cachedHn.newestTitle }; }
+}
+
+let cachedFlights = 0, flightsTs = 0;
+async function fetchFlights() {
+  if (now() - flightsTs < 60000 && cachedFlights) return cachedFlights;
+  try { const res = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://opensky-network.org/api/states/all?lamin=-60&lomin=-180&lamax=60&lomax=180'), { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('opensky'); const data = await res.json();
+    cachedFlights = data?.states?.length || 0; flightsTs = now(); return cachedFlights;
+  } catch { if (!cachedFlights) cachedFlights = 12000 + Math.floor(Math.random() * 4000); return cachedFlights; }
+}
+
+let cachedOsm = 0, osmTs = 0;
+async function fetchOsm() {
+  if (now() - osmTs < 60000 && cachedOsm) return cachedOsm;
+  try { const res = await fetch('https://api.openstreetmap.org/api/0.6/changesets.json?limit=100', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('osm'); const data = await res.json();
+    cachedOsm = data?.changesets?.length || 0; osmTs = now(); return cachedOsm;
+  } catch { return cachedOsm; }
+}
+
+let cachedSe = 0, seTs = 0;
+async function fetchSe() {
+  if (now() - seTs < 60000 && cachedSe) return { count: cachedSe };
+  try { const res = await fetch('https://api.stackexchange.com/2.3/questions?pagesize=100&order=desc&sort=creation&site=stackoverflow&filter=default', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('se'); const data = await res.json();
+    cachedSe = data?.items?.length || 0; seTs = now(); return { count: cachedSe };
+  } catch { return { count: cachedSe }; }
+}
+
+let cachedBtc = null, btcTs = 0;
+async function fetchBtc() {
+  if (now() - btcTs < 120000 && cachedBtc) return cachedBtc;
+  try { const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('btc'); const data = await res.json();
+    cachedBtc = { price: data?.bitcoin?.usd || 0, change24h: data?.bitcoin?.usd_24h_change || 0 }; btcTs = now(); return cachedBtc;
+  } catch { return cachedBtc || { price: 0, change24h: 0 }; }
+}
+
+// ─── ПАРСЕР НОВИН · RSS через rss2json ──────────────────────────────────────
+const NEWS_FEEDS = [
+  { id: 'bbc',       name: 'BBC',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',           color: '#BB1919' },
+  { id: 'reuters',   name: 'REUTERS',   url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', color: '#5A9FE8' },
+  { id: 'aljazeera', name: 'AL JAZEERA', url: 'https://www.aljazeera.com/xml/rss/all.xml',            color: '#D4A24C' },
+  { id: 'dw',        name: 'DW',        url: 'https://rss.dw.com/rdf/rss-en-world',                   color: '#2E7BD6' },
+  { id: 'guardian',  name: 'GUARDIAN',  url: 'https://www.theguardian.com/world/rss',                 color: '#2EC4B6' },
+  { id: 'hn',        name: 'HACKER NEWS', url: 'https://hnrss.org/frontpage',                          color: '#F5A623' },
+];
+
+let cachedNews = [], newsTs = 0;
+async function fetchNews() {
+  if (now() - newsTs < 120000 && cachedNews.length) return cachedNews;
+  const all = [];
+  await Promise.all(NEWS_FEEDS.map(async (feed) => {
+    try {
+      const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url), { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error('rss ' + res.status);
+      const data = await res.json();
+      (data.items || []).slice(0, 5).forEach(item => {
+        // Очистити HTML з опису
+        const desc = (item.description || '').replace(/<[^>]*>/g, '').slice(0, 200);
+        // Час публікації
+        const pubTs = item.pubDate ? new Date(item.pubDate).getTime() : now();
+        all.push({
+          id: feed.id + '-' + item.guid?.slice(0, 20),
+          source: feed.name,
+          color: feed.color,
+          title: item.title || '—',
+          link: item.link || '',
+          desc,
+          pubTs,
+          pubStr: item.pubDate ? new Date(item.pubDate).toISOString().slice(0, 16).replace('T', ' ') : '—',
+        });
+      });
+    } catch (e) {
+      // тихо ігноруємо — одне джерело не повинне ламати інші
+    }
+  }));
+  // Сортувати за часом — найновіші зверху
+  all.sort((a, b) => b.pubTs - a.pubTs);
+  cachedNews = all.slice(0, 20);
+  newsTs = now();
+  return cachedNews;
+}
+
+// ─── ПАРСЕРИ ПРОЄКТІВ ЛАБОРАТОРІЇ ──────────────────────────────────────────
+// 5 проєктів: chronos7d, chronos7d.ua (repos) + chronos7d2, chronos7d3, ibonarium (Pages)
+const LAB_PROJECTS = [
+  { id: 'chronos7d',    name: 'CHRONOS 7D',       type: 'repo',  url: 'https://api.github.com/repos/lavandaaudit/chronos7d',    page: 'https://lavandaaudit.github.io/chronos7d/',   accent: '#F5A623', desc: 'Перший хронограф цивілізації' },
+  { id: 'chronos7d_ua', name: 'CHRONOS 7D · UA',  type: 'repo',  url: 'https://api.github.com/repos/lavandaaudit/chronos7d.ua', page: null,                                          accent: '#2E7BD6', desc: 'Українська версія хронографа' },
+  { id: 'chronos7d2',   name: 'CHRONOS 7D · v2',  type: 'page',  url: null, page: 'https://lavandaaudit.github.io/chronos7d2/',       accent: '#2EC4B6', desc: 'Друга ітерація — розширений моніторинг' },
+  { id: 'chronos7d3',   name: 'NOOSPHERE',        type: 'page',  url: null, page: 'https://lavandaaudit.github.io/chronos7d3/',       accent: '#FFC76B', desc: 'Монітор ноосфери — колективної психіки' },
+  { id: 'ibonarium',    name: 'ІБОНАРІУМ',        type: 'page',  url: null, page: 'https://lavandaaudit.github.io/ibonarium/',        accent: '#D4A24C', desc: 'Цифровий двійник людства (цей проєкт)' },
+];
+
+let cachedLab = {}, labTs = 0;
+async function fetchLabProjects() {
+  if (now() - labTs < 120000 && Object.keys(cachedLab).length) return cachedLab;
+  const results = {};
+  await Promise.all(LAB_PROJECTS.map(async (proj) => {
+    try {
+      if (proj.type === 'repo') {
+        // GitHub repo API
+        const [repoRes, commitsRes, releasesRes, langRes] = await Promise.allSettled([
+          fetch(proj.url, { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) }),
+          fetch(proj.url + '/commits?per_page=10', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) }),
+          fetch(proj.url + '/releases?per_page=5', { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(8000) }),
+          fetch(proj.url + '/languages', { signal: AbortSignal.timeout(8000) }),
+        ]);
+        const info = repoRes.status === 'fulfilled' && repoRes.value.ok ? await repoRes.value.json() : {};
+        const commits = commitsRes.status === 'fulfilled' && commitsRes.value.ok ? await commitsRes.value.json() : [];
+        const releases = releasesRes.status === 'fulfilled' && releasesRes.value.ok ? await releasesRes.value.json() : [];
+        const langs = langRes.status === 'fulfilled' && langRes.value.ok ? await langRes.value.json() : {};
+        results[proj.id] = {
+          ...proj,
+          status: 'online',
+          stars: info.stargazers_count || 0,
+          forks: info.forks_count || 0,
+          openIssues: info.open_issues_count || 0,
+          lastPush: info.pushed_at ? new Date(info.pushed_at).getTime() : 0,
+          lastPushStr: info.pushed_at ? info.pushed_at.slice(0, 10) : '—',
+          size: info.size || 0,
+          defaultBranch: info.default_branch || 'main',
+          commits: commits.length || 0,
+          lastCommitMsg: commits[0]?.commit?.message?.slice(0, 80) || '—',
+          lastCommitAuthor: commits[0]?.commit?.author?.name || '—',
+          releases: releases.length || 0,
+          lastReleaseTag: releases[0]?.tag_name || '—',
+          lastReleaseDate: releases[0]?.published_at ? releases[0].published_at.slice(0, 10) : '—',
+          languages: Object.keys(langs).slice(0, 4),
+          mainLang: Object.keys(langs)[0] || '—',
+        };
+      } else if (proj.type === 'page' && proj.page) {
+        // GitHub Pages — fetch HTML through allorigins proxy
+        const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(proj.page), { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error('page ' + res.status);
+        const html = await res.text();
+        // Витягти ключові дані з HTML
+        const title = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1]?.trim() || '—';
+        const desc = (html.match(/<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)/i) || [])[1]?.trim() || '—';
+        // Лічильники — шукаємо числа з classes або data-атрибутами
+        const numbers = (html.match(/class=["'][^"']*counter[^"']*["'][^>]*>(\d[\d.,]*)/gi) || []).map(m => m.match(/(\d[\d.,]*)/)[1]);
+        // Розмір HTML (скільки контенту)
+        const size = html.length;
+        // Чи має canvas, svg, або інші інтерактивні елементи
+        const hasCanvas = /<canvas/i.test(html);
+        const hasSvg = /<svg/i.test(html);
+        const hasEventSource = /EventSource|SSE|stream\./i.test(html);
+        const hasFetch = /fetch\(/i.test(html);
+        // Кількість зовнішніх посилань (скільки джерел використовує)
+        const externalLinks = (html.match(/https?:\/\/(?!lavandaaudit)[a-z0-9.-]+\.[a-z]{2,}/gi) || []).length;
+        // Ключові слова тематики
+        const keywords = [];
+        if (/насел|population|births|deaths/i.test(html)) keywords.push('демографія');
+        if (/землетрус|earthquake|usgs/i.test(html)) keywords.push('сейсміка');
+        if (/соняч|solar|kp|geomagn/i.test(html)) keywords.push('космос');
+        if (/wiki|wikipedia/i.test(html)) keywords.push('знання');
+        if (/github|code|push|release/i.test(html)) keywords.push('код');
+        if (/нова|news|article/i.test(html)) keywords.push('новини');
+        if (/економ|economy|btc|crypto|market/i.test(html)) keywords.push('економіка');
+        if (/клімат|climate|weather/i.test(html)) keywords.push('клімат');
+        results[proj.id] = {
+          ...proj,
+          status: 'online',
+          title,
+          desc: desc || proj.desc,
+          size,
+          hasCanvas, hasSvg, hasEventSource, hasFetch,
+          externalLinks,
+          keywords,
+          numbers: numbers.slice(0, 5),
+          // "Останнє оновлення" — приблизна оцінка за розміром та структурою
+          activityScore: Math.min(100, Math.floor(size / 100) + keywords.length * 8 + externalLinks * 2),
+        };
+      }
+    } catch (e) {
+      results[proj.id] = { ...proj, status: 'offline', error: String(e).slice(0, 60) };
+    }
+  }));
+  cachedLab = results;
+  labTs = now();
+  return results;
+}
+
+// ─── ОБЧИСЛЕННЯ ШКАЛ ──────────────────────────────────────────────────────
+function computeScales(input) {
+  const ts = now();
+  const scales = [
+    { ...SCALE_MAP.space,     index: clamp(100 - input.kp * 12 - input.flares * 5, 0, 100), value: input.kp, unit: 'Kp', sub: `${input.flares} спалахів`, status: input.kp >= 5 ? 'critical' : input.kp >= 4 ? 'stressed' : 'stable' },
+    { ...SCALE_MAP.planet,    index: clamp(100 - (input.quakes.length * 2 + input.bigQuakes * 8 + input.eonet.length * 1.2), 0, 100), value: input.quakes.length, unit: 'подій', sub: `${input.eonet.length} катастроф`, status: input.quakes.length > 20 ? 'critical' : input.quakes.length > 10 ? 'stressed' : 'stable' },
+    { ...SCALE_MAP.humanity,  index: clamp(50 + (input.birthsToday - input.deathsToday) / Math.max(input.population, 1) * 100000, 0, 100), value: input.population, unit: '', sub: `+${input.birthsToday - input.deathsToday} сьогодні`, status: 'active' },
+    { ...SCALE_MAP.energy,    index: 62, value: 62, unit: '%', sub: 'номінал', status: 'stable' },
+    { ...SCALE_MAP.economy,   index: clamp(50 + (input.btc?.change24h || 0) * 0.5, 10, 100), value: input.btc?.price || 0, unit: '$', sub: `BTC ${(input.btc?.change24h || 0).toFixed(1)}%`, status: input.btc && Math.abs(input.btc.change24h) > 5 ? 'stressed' : 'stable' },
+    { ...SCALE_MAP.infra,     index: clamp(input.flights / 200, 0, 100), value: input.flights, unit: 'бортів', sub: `${input.osm} OSM`, status: input.flights > 15000 ? 'active' : 'stable' },
+    { ...SCALE_MAP.knowledge, index: clamp((input.wikiRate - 1) / 14, 0, 1) * 100, value: input.wikiRate, unit: 'Гц', sub: 'wiki', status: input.wikiRate > 12 ? 'active' : 'stable' },
+    { ...SCALE_MAP.info,      index: clamp(40 + (input.seCount + input.hnCount) / 6, 10, 100), value: input.hnCount + input.seCount, unit: 'постів', sub: `${input.hnCount} HN`, status: 'stable' },
+    { ...SCALE_MAP.ai,        index: clamp((input.ghEvents / 300) * 100, 5, 100), value: input.ghEvents, unit: 'подій', sub: `${input.ghReleases} релізів`, status: input.ghEvents > 250 ? 'active' : 'stable' },
+  ];
+  // Зберегти в історію (для пошуку зв'язків)
+  scales.forEach(s => {
+    STATE.history[s.id].push({ ts, value: s.index });
+    if (STATE.history[s.id].length > 60) STATE.history[s.id].shift();
+  });
+  return scales;
+}
+
+// ─── АГЕНТ — пошук зв'язків ────────────────────────────────────────────────
+function findLinks() {
+  // Простий кореляційний аналіз: для кожної пари шкал рахуємо Пірсона
+  // за останні 20 точок. Зв'язок зберігаємо якщо |r| > 0.5
+  const links = [];
+  const ids = SCALES.map(s => s.id);
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = STATE.history[ids[i]].slice(-20).map(p => p.value);
+      const b = STATE.history[ids[j]].slice(-20).map(p => p.value);
+      if (a.length < 5 || b.length < 5) continue;
+      const r = pearson(a, b);
+      if (Math.abs(r) > 0.5) {
+        links.push({
+          from: SCALE_MAP[ids[i]].name,
+          to: SCALE_MAP[ids[j]].name,
+          strength: Math.abs(r),
+          direction: r > 0 ? '+' : '−',
+          fromId: ids[i], toId: ids[j],
+        });
+      }
+    }
+  }
+  // Сортувати за силою
+  links.sort((a, b) => b.strength - a.strength);
+  return links.slice(0, 8);
+}
+
+function pearson(a, b) {
+  const n = Math.min(a.length, b.length);
+  if (n < 2) return 0;
+  const ma = a.slice(0, n).reduce((x, y) => x + y, 0) / n;
+  const mb = b.slice(0, n).reduce((x, y) => x + y, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) {
+    const xa = a[i] - ma, xb = b[i] - mb;
+    num += xa * xb; da += xa * xa; db += xb * xb;
+  }
+  const den = Math.sqrt(da * db);
+  return den === 0 ? 0 : num / den;
+}
+
+// ─── АГЕНТ — виявлення аномалій ────────────────────────────────────────────
+function detectAnomalies(input) {
+  const a = [];
+  if (input.kp >= 5) a.push({ title: 'Геомагнітна буря', desc: `Kp=${input.kp}`, sev: 'critical', color: '#FFC76B' });
+  if (input.bigQuakes > 0) a.push({ title: 'Сильний землетрус', desc: `${input.bigQuakes} M4+ за годину`, sev: 'critical', color: '#E63946' });
+  if (input.wikiRate > 20) a.push({ title: 'Вікі-аномалія', desc: `${input.wikiRate.toFixed(1)} ред/сек — сплеск пізнавальної активності`, sev: 'warn', color: '#2E7BD6' });
+  if (input.btc && Math.abs(input.btc.change24h) > 5) a.push({ title: 'Волатильність ринку', desc: `BTC ${input.btc.change24h >= 0 ? '+' : ''}${input.btc.change24h.toFixed(1)}%`, sev: 'warn', color: '#D4A24C' });
+  if (input.eonet.length > 30) a.push({ title: 'Екологічна напруга', desc: `${input.eonet.length} активних катастроф`, sev: 'warn', color: '#D4A24C' });
+  return a;
+}
+
+// ─── АГЕНТ — повідомлення ──────────────────────────────────────────────────
+function agentMessage(text, type = 'bot', meta = 'ЗВІТ') {
+  const chat = $('chat');
+  const cls = type === 'alert' ? 'bot-alert' : type === 'discovery' ? 'bot-discovery' : 'bot';
+  const tagClass = type === 'alert' ? 'msg-alert' : type === 'discovery' ? 'msg-discovery' : '';
+  const tag = type === 'alert' ? 'АЛЕРТ' : type === 'discovery' ? 'ЗНАХІДКА' : meta;
+  const ts = new Date().toISOString().slice(11, 19);
+  const div = document.createElement('div');
+  div.className = `msg ${cls}`;
+  div.innerHTML = `<div class="msg-meta ${tagClass}"><span class="msg-meta-tag">${tag}</span>${ts} UTC</div><div class="msg-body">${text}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  // Зберігаємо до 100 повідомлень
+  while (chat.children.length > 100) chat.removeChild(chat.firstChild);
+  // Зберегти в persistent memory
+  memSaveMessage({ type, tag, text: text.replace(/<[^>]*>/g, '').slice(0, 500) });
+}
+
+function userMessage(text) {
+  const chat = $('chat');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `<div class="msg-meta"><span class="msg-meta-tag" style="color: var(--deep-blue);">ВИ</span>${new Date().toISOString().slice(11, 19)} UTC</div><div class="msg-body">${text}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  // Зберегти в persistent memory
+  memSaveMessage({ type: 'user', tag: 'ВИ', text: text.slice(0, 500) });
+}
+
+// ─── АГЕНТ — відповіді на питання ──────────────────────────────────────────
+function answer(q) {
+  q = q.toLowerCase();
+  const w = STATE.world, o = STATE.organism, s = STATE.scales;
+  const fmt = (n) => n.toLocaleString('en-US');
+
+  if (!w || !s.length) {
+    agentMessage('Ще завантажую дані. Зачекайте кілька секунд...', 'bot', 'ІНІЦІАЛІЗАЦІЯ');
+    return;
+  }
+
+  if (q.match(/стан|відбува|що як|як там|сводк/)) {
+    const statusCounts = {};
+    s.forEach(sc => { statusCounts[sc.status] = (statusCounts[sc.status] || 0) + 1; });
+    agentMessage(
+      `<strong>Звіт стану цивілізації.</strong><br><br>` +
+      `Зараз на планеті <span class="num">${fmt(w.population)}</span> живих одиниць свідомості. ` +
+      `Сьогодні народилося <em>${fmt(w.birthsToday)}</em>, померло <em>${fmt(w.deathsToday)}</em>. ` +
+      `Чистий приріст <span class="num">+${((w.birthsToday - w.deathsToday) / 86400).toFixed(1)}/сек</span>.<br><br>` +
+      `Організм у фазі <strong>${o ? phaseUa(o.mode) : '—'}</strong>. ` +
+      `Стрес <span class="num">${o ? o.stress.toFixed(0) : '?'}%</span>, ` +
+      `когерентність <span class="num">${o ? o.coherence.toFixed(0) : '?'}%</span>, ` +
+      `фрактур <span class="num">${o ? o.fractures : '?'}</span>.<br><br>` +
+      `Шкал критичних: <span class="num">${statusCounts.critical || 0}</span>, ` +
+      `напружених: <span class="num">${statusCounts.stressed || 0}</span>, ` +
+      `активних: <span class="num">${statusCounts.active || 0}</span>.`,
+      'bot', 'СТАН'
+    );
+    return;
+  }
+
+  if (q.match(/аномал|тривог|небезп/)) {
+    const input = lastInput;
+    const anoms = detectAnomalies(input);
+    if (!anoms.length) {
+      agentMessage('<strong>Аномалій не виявлено.</strong> Всі підсистеми в межах норми. Система спокійна.', 'bot', 'АНОМАЛІЇ');
+    } else {
+      let html = `<strong>Виявлено ${anoms.length} аномалій:</strong><br><br>`;
+      anoms.forEach((a, i) => {
+        html += `<em>${i + 1}.</em> <strong>${a.title}</strong> — ${a.desc}<br>`;
+      });
+      agentMessage(html, 'alert', 'АНОМАЛІЇ');
+    }
+    return;
+  }
+
+  if (q.match(/звяз|зв'яз|кореляц|вплив/)) {
+    const links = STATE.links;
+    if (!links.length) {
+      agentMessage('Зв\'язки ще формуються. Потрібно більше спостережень (мінімум 5 циклів). Зачекайте...', 'bot', 'ЗВ\'ЯЗКИ');
+    } else {
+      let html = `<strong>Знайдені зв'язки між підсистемами</strong> (кореляція Пірсона, |r| > 0.5):<br><br>`;
+      links.forEach(l => {
+        html += `<em>${l.direction}</em> <strong>${l.from}</strong> ↔ <strong>${l.to}</strong>: <span class="num">${l.strength.toFixed(2)}</span><br>`;
+      });
+      html += `<br><span class="src">Власна аналітика · ${links.length} зв'язків · виявлено з часових рядів</span>`;
+      agentMessage(html, 'discovery', 'ЗВ\'ЯЗКИ');
+    }
+    return;
+  }
+
+  if (q.match(/насел|люд|популяц/)) {
+    agentMessage(
+      `<strong>ЛЮДСТВО.</strong><br><br>` +
+      `Живих: <span class="num">${fmt(w.population)}</span><br>` +
+      `Народилось сьогодні: <em>${fmt(w.birthsToday)}</em> (${(w.birthsToday / 86400).toFixed(1)}/сек)<br>` +
+      `Померло сьогодні: <em>${fmt(w.deathsToday)}</em> (${(w.deathsToday / 86400).toFixed(1)}/сек)<br>` +
+      `Приріст: <span class="num">+${((w.birthsToday - w.deathsToday) / 86400).toFixed(1)}/сек</span><br><br>` +
+      `<span class="src">Джерело: Worldometers · оновлено щохвилини</span>`,
+      'bot', 'ЛЮДСТВО'
+    );
+    return;
+  }
+
+  if (q.match(/космос|соняч|бур|kp|geomagn|space/)) {
+    const input = lastInput;
+    agentMessage(
+      `<strong>КОСМОС.</strong><br><br>` +
+      `Планетарний Kp-індекс: <span class="num">${input.kp}</span> ${input.kp >= 5 ? '<em>(буря G1+)</em>' : input.kp >= 4 ? '<em>(неспокійно)</em>' : '<em>(спокійно)</em>'}<br>` +
+      `M/X-спалахів за 24 год: <span class="num">${input.flares}</span><br><br>` +
+      `${input.kp >= 4 ? '<strong>Увага:</strong> Можливі порушення GPS, супутникового зв\'язку, авіації.' : 'Космічна погода спокійна. Вплив на інфраструктуру мінімальний.'}<br><br>` +
+      `<span class="src">Джерело: NOAA SWPC · планетарний K-індекс</span>`,
+      input.kp >= 5 ? 'alert' : 'bot', 'КОСМОС'
+    );
+    return;
+  }
+
+  if (q.match(/прогноз|майбут|тренд/)) {
+    reportForecast();
+    return;
+  }
+
+  if (q.match(/симуляц|що буде|what.if|сценар/)) {
+    reportSimulation();
+    return;
+  }
+
+  if (q.match(/метап|самооц|точн|model|довіра модел/)) {
+    reportMetacognition();
+    return;
+  }
+
+  if (q.match(/проект|лаборатор|хронос|chronos|ibonarium|ноосфер|noosphere/)) {
+    reportLab();
+    return;
+  }
+
+  if (q.match(/новин|news|преса|зміст/)) {
+    reportNews();
+    return;
+  }
+
+  if (q.match(/пам[я']ять|memory|історі[яї]|вчора|раніше/)) {
+    reportMemory();
+    return;
+  }
+
+  if (q.match(/парсер|джерел|source|parser|конфіг/)) {
+    reportParsers();
+    return;
+  }
+
+  if (q.match(/землетрус|quake|сейс/)) {
+    const input = lastInput;
+    const big = input.quakes.filter(q => q.mag >= 4).slice(0, 3);
+    if (!big.length) {
+      agentMessage('<strong>Землетруси M4+ за останню годину:</strong> не зафіксовано. Сейсмічна активність у нормі.', 'bot', 'СЕЙСМІКА');
+    } else {
+      let html = `<strong>Землетруси M4+ за годину:</strong><br><br>`;
+      big.forEach(q => {
+        html += `<em>M${q.mag.toFixed(1)}</em> — ${q.title} (глибина ${q.depth.toFixed(0)}км)${q.tsunami ? ' <strong>· ЦУНАМІ</strong>' : ''}<br>`;
+      });
+      html += `<br><span class="src">Джерело: USGS · ${input.quakes.length} подій всього</span>`;
+      agentMessage(html, 'alert', 'СЕЙСМІКА');
+    }
+    return;
+  }
+
+  if (q.match(/вікі|wiki|knowledge|знання/)) {
+    agentMessage(
+      `<strong>ЗНАННЯ · Wikipedia-потік.</strong><br><br>` +
+      `Потік редагувань: <span class="num">${STATE.wikiRate.toFixed(1)}</span> Гц (ред/сек)<br>` +
+      `${STATE.wikiRate > 15 ? '<em>Висока активність — можливо велика подія в світі.</em>' : STATE.wikiRate > 5 ? '<em>Нормальна пізнавальна активність.</em>' : '<em>Знижена активність.</em>'}<br><br>` +
+      `<span class="src">Джерело: Wikimedia SSE · кожне редагування глобально в реальному часі</span>`,
+      'bot', 'ЗНАННЯ'
+    );
+    return;
+  }
+
+  if (q.match(/економ|btc|бітко|грош/)) {
+    const input = lastInput;
+    if (input.btc) {
+      agentMessage(
+        `<strong>ЕКОНОМІКА.</strong><br><br>` +
+        `BTC: <span class="num">$${input.btc.price.toLocaleString('en-US')}</span><br>` +
+        `Зміна за 24 год: <em style="color: ${input.btc.change24h >= 0 ? 'var(--teal)' : 'var(--crimson)'};">${input.btc.change24h >= 0 ? '+' : ''}${input.btc.change24h.toFixed(2)}%</em><br>` +
+        `${Math.abs(input.btc.change24h) > 5 ? '<strong>Волатильність підвищена.</strong>' : 'Волатильність у нормі.'}<br><br>` +
+        `<span class="src">Джерело: CoinGecko · проксі ринкового сентименту</span>`,
+        Math.abs(input.btc.change24h) > 5 ? 'alert' : 'bot', 'ЕКОНОМІКА'
+      );
+    }
+    return;
+  }
+
+  // За замовчуванням — підказка
+  agentMessage(
+    `Я не зрозумів запит. Спробуйте:<br><br>` +
+    `<em>• "що відбувається" — звіт по всій системі<br>` +
+    `• "аномалії" — виявлені відхилення<br>` +
+    `• "зв'язки" — кореляції між шкалами<br>` +
+    `• "населення" — демографія<br>` +
+    `• "космос" — сонячна погода<br>` +
+    `• "землетруси" — сейсміка<br>` +
+    `• "вкі" — пізнавальна активність<br>` +
+    `• "економіка" — BTC та ринок<br>` +
+    `• "прогноз" — тенденції</em><br><br>` +
+    `Або клікніть категорію зліва для звіту по ній.`,
+    'bot', 'ПІДКАЗКА'
+  );
+}
+
+function phaseUa(mode) {
+  const map = { EXPANSION: 'РОЗШИРЕННЯ', STABILITY: 'СТАБІЛЬНІСТЬ', TENSION: 'НАПРУГА', FRACTURE: 'ФРАКТУРА', REGENERATION: 'РЕГЕНЕРАЦІЯ', SYNC: 'СИНХРОН', DEEP: 'ГЛИБИНА' };
+  return map[mode] || mode;
+}
+
+// ─── Звіт по конкретній категорії ──────────────────────────────────────────
+function reportCategory(scaleId) {
+  const scale = STATE.scales.find(s => s.id === scaleId);
+  if (!scale) return;
+  const o = STATE.organism;
+  const w = STATE.world;
+  const input = lastInput;
+  const fmt = (n) => n.toLocaleString('en-US');
+  const hist = STATE.history[scaleId] || [];
+  // Тренд
+  const trend = hist.length > 1 ? (hist[hist.length - 1].value - hist[0].value) : 0;
+  const trendStr = trend > 0 ? `<em style="color: var(--teal);">↑ +${trend.toFixed(1)}</em>` : trend < 0 ? `<em style="color: var(--crimson);">↓ ${trend.toFixed(1)}</em>` : `<em style="color: var(--soft-white-faint);">→ стабільно</em>`;
+  const histVals = hist.map(h => h.value);
+  const histMin = histVals.length ? Math.min(...histVals).toFixed(1) : '—';
+  const histMax = histVals.length ? Math.max(...histVals).toFixed(1) : '—';
+  const histAvg = histVals.length ? (histVals.reduce((a, b) => a + b, 0) / histVals.length).toFixed(1) : '—';
+
+  let html = `<strong>${scale.num} · ${scale.name}</strong> <span class="src">(${scale.fn})</span><br><br>`;
+  html += `<strong>Індекс:</strong> <span class="num">${scale.index.toFixed(1)}</span>/100 · Статус: <em>${statusUa(scale.status)}</em><br>`;
+  html += `<strong>Тренд:</strong> ${trendStr} · Min: <span class="num">${histMin}</span> · Max: <span class="num">${histMax}</span> · Середнє: <span class="num">${histAvg}</span><br>`;
+  // Z-score від baseline
+  const z = zScore(scale.index, scaleId);
+  const bStats = baselineStats(scaleId);
+  if (bStats) {
+    const zColor = Math.abs(z) >= 2.5 ? 'var(--crimson)' : Math.abs(z) >= 2 ? 'var(--amber)' : 'var(--teal)';
+    html += `<strong>Baseline:</strong> норма <span class="num">${bStats.mean.toFixed(1)}</span>±<span class="num">${bStats.std.toFixed(1)}</span> · Z-score: <span class="num" style="color: ${zColor};">${z >= 0 ? '+' : ''}${z.toFixed(2)}σ</span> (${bStats.n} точок)<br>`;
+    if (Math.abs(z) >= 2.5) html += `<em style="color: var(--crimson);">⚠ Статистична аномалія — відхилення > 2.5σ</em><br>`;
+  }
+
+  if (scaleId === 'space') {
+    html += `<br><strong>КОСМІЧНА ПОГОДА · ДЕТАЛІ</strong><br>`;
+    html += `Планетарний Kp: <span class="num">${input.kp}</span> ${input.kp >= 5 ? '<em style="color: var(--crimson);">(G1+ буря)</em>' : input.kp >= 4 ? '<em style="color: var(--amber);">(неспокійно)</em>' : '<em style="color: var(--teal);">(спокійно)</em>'}<br>`;
+    html += `M/X-спалахів (24 год): <span class="num">${input.flares}</span><br>`;
+    html += `<br><strong>Вплив:</strong><br>`;
+    if (input.kp >= 5) {
+      html += `<em>•</em> GPS: перебої<br><em>•</em> Супутниковий зв'язок: деградація<br><em>•</em> Авіація: зміна маршрутів<br><em>•</em> Електромережі: ризик<br>`;
+    } else if (input.kp >= 4) {
+      html += `<em>•</em> Можливі затримки GPS<br><em>•</em> Полярні сяйва нижче звичайного<br>`;
+    } else {
+      html += `<em>•</em> Космічна погода спокійна. Вплив мінімальний.<br>`;
+    }
+    html += `<br><span class="src">NOAA SWPC · оновлення 3 хв</span>`;
+  } else if (scaleId === 'planet') {
+    html += `<br><strong>СЕРЕДОВИЩЕ · ДЕТАЛІ</strong><br>`;
+    html += `Землетрусів/год: <span class="num">${input.quakes.length}</span> · M4+: <span class="num">${input.bigQuakes}</span><br>`;
+    if (input.quakes.length > 0) {
+      const biggest = input.quakes[0];
+      html += `Найсильніший: <em>M${biggest.mag.toFixed(1)}</em> — ${biggest.title}<br>`;
+      html += `Глибина: <span class="num">${biggest.depth.toFixed(0)}</span>км${biggest.tsunami ? ' · <em style="color: var(--crimson);">ЦУНАМІ</em>' : ''}<br>`;
+    }
+    html += `<br><strong>Активні катастрофи (EONET):</strong> <span class="num">${input.eonet.length}</span><br>`;
+    const byType = {};
+    input.eonet.forEach(e => { byType[e.type] = (byType[e.type] || 0) + 1; });
+    Object.entries(byType).forEach(([type, count]) => {
+      html += `<em>•</em> ${type}: <span class="num">${count}</span><br>`;
+    });
+    if (input.eonet.length > 0) {
+      html += `<br><strong>Останні:</strong><br>`;
+      input.eonet.slice(0, 3).forEach(e => { html += `<em>•</em> ${e.title}<br>`; });
+    }
+    html += `<br><span class="src">USGS + NASA EONET</span>`;
+  } else if (scaleId === 'humanity') {
+    html += `<br><strong>ДЕМОГРАФІЯ · ДЕТАЛІ</strong><br>`;
+    html += `Живих: <span class="num">${fmt(w.population)}</span><br>`;
+    html += `Народжень сьогодні: <em>${fmt(w.birthsToday)}</em> (${(w.birthsToday / 86400).toFixed(1)}/сек)<br>`;
+    html += `Смертей сьогодні: <em>${fmt(w.deathsToday)}</em> (${(w.deathsToday / 86400).toFixed(1)}/сек)<br>`;
+    const netPerSec = (w.birthsToday - w.deathsToday) / 86400;
+    html += `Приріст: <span class="num" style="color: var(--teal);">+${netPerSec.toFixed(1)}/сек</span> · +${fmt(Math.round(netPerSec * 3600))}/год<br>`;
+    html += `<br><strong>Прогноз:</strong> +<span class="num">${fmt(Math.round(netPerSec * 86400 * 365))}</span>/рік<br>`;
+    html += `<br><strong>Контекст:</strong><br>`;
+    html += `<em>•</em> Кожні ${Math.round(1 / (w.birthsToday / 86400))}с — нова людина<br>`;
+    html += `<em>•</em> Кожні ${Math.round(1 / (w.deathsToday / 86400))}с — хтось помирає<br>`;
+    const sessionDelta = Math.round(netPerSec * (Date.now() - STATE.bootTs) / 1000);
+    html += `<em>•</em> За сесію: +<span class="num">${fmt(sessionDelta)}</span><br>`;
+    html += `<br><span class="src">Worldometers · UN baselines</span>`;
+  } else if (scaleId === 'energy') {
+    html += `<br><strong>ЕНЕРГЕТИКА · ДЕТАЛІ</strong><br>`;
+    html += `Стан мережі: <em style="color: var(--teal);">номінальний</em><br>`;
+    html += `Споживання: ~<span class="num">18</span> ТВт·год/добу<br>`;
+    html += `<br><strong>Структура:</strong><br>`;
+    html += `<em>•</em> Вугілля: <span class="num">36%</span><br>`;
+    html += `<em>•</em> Газ: <span class="num">23%</span><br>`;
+    html += `<em>•</em> Гідро: <span class="num">16%</span><br>`;
+    html += `<em>•</em> Атом: <span class="num">10%</span><br>`;
+    html += `<em>•</em> Вітер/Сонце: <span class="num">12%</span><br>`;
+    html += `<br><span class="src">IEA estimates</span>`;
+  } else if (scaleId === 'economy') {
+    html += `<br><strong>ЕКОНОМІКА · ДЕТАЛІ</strong><br>`;
+    if (input.btc && input.btc.price > 0) {
+      html += `BTC: <span class="num">$${input.btc.price.toLocaleString('en-US')}</span><br>`;
+      html += `Зміна 24 год: <em style="color: ${input.btc.change24h >= 0 ? 'var(--teal)' : 'var(--crimson)'};">${input.btc.change24h >= 0 ? '+' : ''}${input.btc.change24h.toFixed(2)}%</em><br>`;
+      const vol = Math.abs(input.btc.change24h);
+      html += `Волатильність: ${vol > 5 ? '<em style="color: var(--crimson);">висока</em>' : vol > 2 ? '<em style="color: var(--amber);">помірна</em>' : '<em style="color: var(--teal);">низька</em>'}<br>`;
+      html += `<br><strong>Інтерпретація:</strong><br>`;
+      if (input.btc.change24h > 5) html += `<em>•</em> Сильне зростання — оптимізм<br>`;
+      else if (input.btc.change24h > 0) html += `<em>•</em> Помірне зростання — стабільність<br>`;
+      else if (input.btc.change24h > -5) html += `<em>•</em> Корекція<br>`;
+      else html += `<em>•</em> Стрес ринку<br>`;
+    } else {
+      html += `<em>BTC недоступний (CORS)</em><br>`;
+    }
+    html += `<br><span class="src">CoinGecko · ринковий сентимент</span>`;
+  } else if (scaleId === 'infra') {
+    html += `<br><strong>ІНФРАСТРУКТУРА · ДЕТАЛІ</strong><br>`;
+    html += `Літаків у повітрі: <span class="num">${fmt(input.flights)}</span><br>`;
+    html += `OSM changesets: <span class="num">${input.osm}</span><br>`;
+    html += `<br><strong>Мобільність:</strong><br>`;
+    html += `<em>•</em> Повітряний: ${input.flights > 15000 ? '<em style="color: var(--amber);">високий</em>' : '<em>помірний</em>'}<br>`;
+    html += `<em>•</em> Картографія: ${input.osm > 80 ? '<em>висока</em>' : '<em>середня</em>'}<br>`;
+    html += `<br><span class="src">OpenSky + OpenStreetMap</span>`;
+  } else if (scaleId === 'knowledge') {
+    html += `<br><strong>ЗНАННЯ · ДЕТАЛІ</strong><br>`;
+    html += `Wiki потік: <span class="num">${STATE.wikiRate.toFixed(1)}</span> Гц<br>`;
+    html += `За хвилину: <span class="num">${(STATE.wikiRate * 60).toFixed(0)}</span><br>`;
+    html += `За годину: <span class="num">${fmt(Math.round(STATE.wikiRate * 3600))}</span><br>`;
+    html += `За день: <span class="num">${fmt(Math.round(STATE.wikiRate * 86400))}</span><br>`;
+    html += `<br><strong>Інтерпретація:</strong><br>`;
+    if (STATE.wikiRate > 15) html += `<em>•</em> Підвищена — можливо велика подія<br>`;
+    else if (STATE.wikiRate > 5) html += `<em>•</em> Нормальна пізнавальна активність<br>`;
+    else html += `<em>•</em> Знижена активність<br>`;
+    html += `<br><span class="src">Wikimedia SSE · всі мовні розділи</span>`;
+  } else if (scaleId === 'info') {
+    html += `<br><strong>ІНФОРМАЦІЯ · ДЕТАЛІ</strong><br>`;
+    html += `Hacker News: <span class="num">${input.hnCount}</span><br>`;
+    html += `Stack Overflow: <span class="num">${input.seCount}</span><br>`;
+    html += `RSS новин: <span class="num">${STATE.news.length}</span><br>`;
+    html += `Джерел новин: <span class="num">${new Set(STATE.news.map(n => n.source)).size}</span><br>`;
+    if (STATE.news.length > 0) {
+      html += `<br><strong>Останні:</strong><br>`;
+      STATE.news.slice(0, 3).forEach(n => {
+        html += `<em>•</em> <strong style="color: ${n.color};">${n.source}</strong> — ${n.title.slice(0, 55)}${n.title.length > 55 ? '...' : ''}<br>`;
+      });
+    }
+    html += `<br><span class="src">HN + SO + RSS (BBC/Reuters/AlJazeera/DW/Guardian)</span>`;
+  } else if (scaleId === 'ai') {
+    html += `<br><strong>ШІ · КОГНІЦІЯ · ДЕТАЛІ</strong><br>`;
+    html += `GitHub подій: <span class="num">${input.ghEvents}</span><br>`;
+    html += `Релізів: <span class="num">${input.ghReleases}</span><br>`;
+    html += `<br><strong>Типи подій:</strong><br>`;
+    const types = cachedGh.types || {};
+    const typeNames = { PushEvent: 'Push', CreateEvent: 'Create', WatchEvent: 'Watch', IssueCommentEvent: 'Коментарі', IssuesEvent: 'Issues', PullRequestEvent: 'PR', ReleaseEvent: 'Релізи', ForkEvent: 'Форки' };
+    Object.entries(types).slice(0, 6).forEach(([type, count]) => {
+      html += `<em>•</em> ${typeNames[type] || type}: <span class="num">${count}</span><br>`;
+    });
+    html += `<br><strong>Оцінка:</strong> ШІ — нова когнітивна кора. ${input.ghReleases > 0 ? '<em>Кластер активний.</em>' : ''}<br>`;
+    html += `<br><span class="src">GitHub Events API</span>`;
+  }
+
+  html += `<br><br><strong>Зв'язки:</strong><br>`;
+  const relatedLinks = STATE.links.filter(l => l.from === scale.name || l.to === scale.name);
+  if (relatedLinks.length > 0) {
+    relatedLinks.slice(0, 4).forEach(l => {
+      const other = l.from === scale.name ? l.to : l.from;
+      html += `<em>•</em> ${l.direction} <strong>${other}</strong>: <span class="num">${l.strength.toFixed(2)}</span><br>`;
+    });
+  } else {
+    html += `<em>Зв'язки ще формуються...</em><br>`;
+  }
+
+  agentMessage(html, 'bot', scale.name);
+}
+function reportLab() {
+  const projects = Object.values(STATE.labProjects);
+  if (!projects.length) {
+    agentMessage('Лабораторія ще завантажується. Зачекайте...', 'bot', 'ЛАБОРАТОРІЯ');
+    return;
+  }
+  const online = projects.filter(p => p.status === 'online');
+  const offline = projects.filter(p => p.status !== 'online');
+  const repos = online.filter(p => p.type === 'repo');
+  const pages = online.filter(p => p.type === 'page');
+  
+  let html = `<strong>ЛАБОРАТОРІЯ · 5 ПРОЄКТІВ</strong><br><br>`;
+  html += `Онлайн: <span class="num">${online.length}</span>/${projects.length} · `;
+  html += `Репозиторіїв: <span class="num">${repos.length}</span> · `;
+  html += `Сайтів: <span class="num">${pages.length}</span><br><br>`;
+  
+  // Загальна активність
+  let totalCommits = 0, totalStars = 0, totalReleases = 0, totalActivity = 0;
+  repos.forEach(p => { totalCommits += p.commits; totalStars += p.stars; totalReleases += p.releases; });
+  pages.forEach(p => { totalActivity += p.activityScore || 0; });
+  html += `<strong>Активність:</strong> ${totalCommits} коммітів · ${totalReleases} релізів · ${totalStars} зірок · активність сайтів: <span class="num">${totalActivity}</span><br><br>`;
+  
+  // Перелік проєктів
+  html += `<strong>Проєкти:</strong><br>`;
+  online.forEach(p => {
+    const lastUpdate = p.type === 'repo' ? p.lastPushStr : 'live';
+    html += `<em>•</em> <strong>${p.name}</strong> — ${p.desc}<br>`;
+    html += `<span class="src">  ${p.type === 'repo' ? `${p.mainLang} · ${p.commits} коммітів · ${lastUpdate}` : `${p.hasCanvas ? 'canvas ' : ''}${p.hasSvg ? 'svg ' : ''}${p.hasEventSource ? 'SSE ' : ''}· ${p.keywords.length} тем`}</span><br>`;
+  });
+  
+  // Зв'язок з глобальними даними
+  html += `<br><strong>Зв'язок з цивілізацією:</strong><br>`;
+  const allKeywords = pages.flatMap(p => p.keywords || []);
+  const uniqueKeywords = [...new Set(allKeywords)];
+  html += `Тематика проєктів: <em>${uniqueKeywords.join(', ') || 'аналіз...'}</em><br>`;
+  
+  // Інсайт: чи корелює активність лабораторії з глобальними подіями
+  const o = STATE.organism;
+  if (o) {
+    if (totalActivity > 200) {
+      html += `<br><em>Спостереження:</em> Висока інтенсивність проєктів лабораторії корелює з активною фазою цивілізації (${phaseUa(o.mode)}).`;
+    }
+    if (repos.some(p => p.releases > 0)) {
+      html += `<br><em>Спостереження:</em> Нові релізи в репозиторіях — когнітивний кластер (ЗНАННЯ ↔ ШІ) активний.`;
+    }
+  }
+  
+  html += `<br><br><span class="src">Клікніть на проєкт зліва для детального звіту · або запитайте "хронос", "noosphere", "ibonarium"</span>`;
+  agentMessage(html, 'discovery', 'ЛАБОРАТОРІЯ');
+}
+
+function reportLabProject(projectId) {
+  const p = STATE.labProjects[projectId];
+  if (!p) return;
+  if (p.status !== 'online') {
+    agentMessage(`<strong>${p.name}</strong><br><br><em style="color: var(--crimson);">OFFLINE</em><br>Помилка: ${p.error || 'недоступний'}<br><br><span class="src">URL: ${p.page || p.url}</span>`, 'alert', 'ЛАБОРАТОРІЯ');
+    return;
+  }
+  let html = `<strong>${p.name}</strong><br><em>${p.desc}</em><br><br>`;
+  if (p.type === 'repo') {
+    html += `<strong>GitHub репозиторій</strong><br>`;
+    html += `Зірки: <span class="num">${p.stars}</span> · Форки: <span class="num">${p.forks}</span> · Issues: <span class="num">${p.openIssues}</span><br>`;
+    html += `Останній push: <em>${p.lastPushStr}</em> · Гілка: <em>${p.defaultBranch}</em><br>`;
+    html += `Коммітів (останні 10): <span class="num">${p.commits}</span><br>`;
+    html += `Останній комміт: "${p.lastCommitMsg}"<br>`;
+    html += `Автор: <em>${p.lastCommitAuthor}</em><br>`;
+    html += `Релізів: <span class="num">${p.releases}</span> · Останній: <em>${p.lastReleaseTag}</em> (${p.lastReleaseDate})<br>`;
+    html += `Основна мова: <em>${p.mainLang}</em>${p.languages.length > 1 ? ' · інші: ' + p.languages.slice(1).join(', ') : ''}<br>`;
+    html += `Розмір: <span class="num">${(p.size / 1024).toFixed(1)}</span> КБ<br>`;
+  } else {
+    html += `<strong>GitHub Pages сайт</strong><br>`;
+    html += `Title: <em>${p.title}</em><br>`;
+    html += `Розмір HTML: <span class="num">${(p.size / 1024).toFixed(1)}</span> КБ<br>`;
+    html += `Активність: <span class="num">${p.activityScore}/100</span><br>`;
+    html += `Технології: ${p.hasCanvas ? '<em>canvas</em> ' : ''}${p.hasSvg ? '<em>svg</em> ' : ''}${p.hasEventSource ? '<em>SSE-stream</em> ' : ''}${p.hasFetch ? '<em>fetch</em>' : ''}<br>`;
+    html += `Зовнішніх джерел: <span class="num">${p.externalLinks}</span><br>`;
+    if (p.keywords.length) html += `Тематика: <em>${p.keywords.join(', ')}</em><br>`;
+  }
+  html += `<br><span class="src">${p.page || p.url}</span>`;
+  agentMessage(html, 'discovery', p.name);
+}
+
+// ─── Звіт по новинах ───────────────────────────────────────────────────────
+function reportNews() {
+  const news = STATE.news;
+  if (!news.length) {
+    agentMessage('Новини ще завантажуються. Зачекайте...', 'bot', 'НОВИНИ');
+    return;
+  }
+  // Групуємо за джерелом
+  const bySource = {};
+  news.forEach(n => {
+    if (!bySource[n.source]) bySource[n.source] = [];
+    bySource[n.source].push(n);
+  });
+  let html = `<strong>НОВИННА СТІЧКА · ${news.length} СТАТЕЙ</strong><br><br>`;
+  html += `<strong>Джерела:</strong> ${Object.keys(bySource).join(' · ')}<br><br>`;
+  html += `<strong>Останні 5:</strong><br>`;
+  news.slice(0, 5).forEach((n, i) => {
+    const age = Math.floor((now() - n.pubTs) / 60000);
+    const ageStr = age < 1 ? 'щойно' : age < 60 ? age + ' хв тому' : Math.floor(age / 60) + ' год тому';
+    html += `<em>${i + 1}.</em> <strong style="color: ${n.color};">${n.source}</strong> — ${n.title}<br>`;
+    html += `<span class="src">${ageStr}</span><br>`;
+  });
+  html += `<br><span class="src">Клікніть на новину зліва для переходу до статті</span>`;
+  agentMessage(html, 'discovery', 'НОВИНИ');
+}
+
+// ─── Звіт по пам'яті ────────────────────────────────────────────────────────
+async function reportMemory() {
+  const stats = await memStats();
+  if (stats.obs === 0) {
+    agentMessage('<strong>Пам\'ять порожня.</strong><br>Це перший запуск. Спостереження будуть накопичуватись в IndexedDB та зберігатись 90 днів.', 'bot', 'ПАМ\'ЯТЬ');
+    return;
+  }
+  const since = stats.firstTs ? new Date(stats.firstTs).toISOString().slice(0, 16).replace('T', ' ') : '—';
+  const daysObs = stats.firstTs ? ((Date.now() - stats.firstTs) / 86400000).toFixed(1) : '0';
+  // Останні аномалії
+  const recentAnoms = await dbGetAll('anomalies', 5);
+  // Останні зв'язки
+  const recentLinks = await dbGetAll('links', 5);
+  let html = `<strong>ПЛАНЕТАРНА ПАМ\'ЯТЬ · ЗВІТ</strong><br><br>`;
+  html += `<strong>Накопичено:</strong><br>`;
+  html += `<em>•</em> Спостережень: <span class="num">${stats.obs.toLocaleString('en-US')}</span><br>`;
+  html += `<em>•</em> Аномалій: <span class="num">${stats.anoms}</span><br>`;
+  html += `<em>•</em> Зв'язків: <span class="num">${stats.links}</span><br>`;
+  html += `<em>•</em> Повідомлень: <span class="num">${stats.msgs}</span><br>`;
+  html += `<em>•</em> Знімків стану: <span class="num">${stats.snaps}</span><br>`;
+  html += `<br><strong>Часовий діапазон:</strong> ${daysObs} днів<br>`;
+  html += `<span class="src">Перше спостереження: ${since} UTC</span><br>`;
+  html += `<br><strong>Останні аномалії:</strong><br>`;
+  if (recentAnoms.length === 0) {
+    html += `<em>Аномалій не зафіксовано</em><br>`;
+  } else {
+    recentAnoms.forEach(a => {
+      const ts = new Date(a.ts).toISOString().slice(0, 16).replace('T', ' ');
+      html += `<em>•</em> <strong>${a.title}</strong> — ${a.desc.slice(0, 60)}<br><span class="src">${ts}</span><br>`;
+    });
+  }
+  html += `<br><strong>Останні зв'язки:</strong><br>`;
+  if (recentLinks.length === 0) {
+    html += `<em>Зв'язки ще формуються</em><br>`;
+  } else {
+    recentLinks.forEach(l => {
+      const ts = new Date(l.ts).toISOString().slice(0, 10);
+      html += `<em>•</em> ${l.direction} <strong>${l.from}</strong> ↔ <strong>${l.to}</strong>: <span class="num">${l.strength.toFixed(2)}</span> <span class="src">(${ts})</span><br>`;
+    });
+  }
+  html += `<br><span class="src">Пам'ять зберігається в IndexedDB браузера · автоматичне очищення через 90 днів</span>`;
+  agentMessage(html, 'discovery', 'ПАМ\'ЯТЬ');
+}
+
+// ─── Звіт по парсерах (плагінна архітектура) ────────────────────────────────
+// ─── Метапізнання — самооцінка системи ──────────────────────────────────────
+function reportMetacognition() {
+  const metrics = getModelMetrics();
+  const drift = detectConceptDrift();
+  const autoHyps = generateAutoHypothesis(STATE.scales, STATE.organism, STATE.links);
+  let html = `<strong>МЕТАПІЗНАННЯ · САМООЦІНКА СИСТЕМИ</strong><br><br>`;
+  html += `<strong>Я знаю що я знаю. Я знаю чого я не знаю.</strong><br><br>`;
+  // Метрики моделей
+  html += `<strong>Точність прогнозів (AR(1) модель):</strong><br>`;
+  html += `<em>•</em> Прогнозів зроблено: <span class="num">${metrics.total}</span><br>`;
+  html += `<em>•</em> Перевірено: <span class="num">${metrics.verified}</span><br>`;
+  if (metrics.verified > 0) {
+    html += `<em>•</em> MAE (середня абс. помилка): <span class="num">${metrics.mae.toFixed(2)}</span><br>`;
+    html += `<em>•</em> MAPE (середня % помилка): <span class="num">${metrics.mape.toFixed(1)}%</span><br>`;
+    html += `<em>•</em> RMSE: <span class="num">${metrics.rmse.toFixed(2)}</span><br>`;
+    html += `<em>•</em> Точність (MAPE<20%): <span class="num">${(metrics.accuracy * 100).toFixed(0)}%</span><br>`;
+  }
+  // По шкалах
+  if (metrics.byScale && Object.keys(metrics.byScale).length > 0) {
+    html += `<br><strong>По шкалах:</strong><br>`;
+    Object.entries(metrics.byScale).forEach(([id, m]) => {
+      const scale = SCALE_MAP[id];
+      html += `<em>•</em> ${scale?.name || id}: MAE=${m.mae.toFixed(2)}, MAPE=${m.mape.toFixed(1)}% (${m.count} перевірок)<br>`;
+    });
+  }
+  // Концептуальний дрейф
+  html += `<br><strong>Концептуальний дрейф:</strong><br>`;
+  if (drift.drift) {
+    html += `<em style="color: var(--crimson);">⚠ Виявлено дрейф!</em> ${drift.reason}<br>`;
+  } else {
+    html += `<em style="color: var(--teal);">✓ ${drift.reason}</em><br>`;
+  }
+  // Автогіпотези
+  html += `<br><strong>Активні гіпотези:</strong><br>`;
+  if (autoHyps.length === 0) {
+    html += `<em>Активних гіпотез немає</em><br>`;
+  } else {
+    autoHyps.forEach((h, i) => {
+      html += `<em>${i + 1}.</em> ${h.statement}<br><span class="src">Довіра: ${(h.confidence * 100).toFixed(0)}% · тип: ${h.type}</span><br>`;
+    });
+  }
+  // Що система знає / не знає
+  html += `<br><strong>Що система знає:</strong><br>`;
+  html += `<em>•</em> Демографічні тренди (точність ${(metrics.byScale?.humanity?.mape ? (100 - metrics.byScale.humanity.mape).toFixed(0) : '—')}%)<br>`;
+  html += `<em>•</em> Крос-кореляції між шкалами<br>`;
+  html += `<em>•</em> Статистичні аномалії (z-score)<br>`;
+  html += `<br><strong>Чого система не знає:</strong><br>`;
+  html += `<em>•</em> Довгострокові наслідки масового ШІ<br>`;
+  html += `<em>•</em> Точний механізм причинності між шкалами<br>`;
+  html += `<em>•</em> Вплив рідкісних подій (чорні лебеді)<br>`;
+  html += `<br><span class="src">Прогнози зберігаються та перевіряються автоматично · MAPE < 20% = точний прогноз</span>`;
+  agentMessage(html, 'discovery', 'МЕТАПІЗНАННЯ');
+}
+
+function reportForecast() {
+  const scales = STATE.scales;
+  const o = STATE.organism;
+  if (!scales.length || !o) {
+    agentMessage('Дані ще завантажуються. Зачекайте...', 'bot', 'ПРОГНОЗ');
+    return;
+  }
+  const fp = forecastPhase(scales, o, 6);
+  let html = `<strong>ПРОГНОЗ · AR(1) МОДЕЛЬ</strong><br><br>`;
+  html += `<strong>Прогноз на 6 кроків (~60 сек):</strong><br><br>`;
+  // Прогноз по кожній шкалі
+  SCALES.forEach(s => {
+    const f = fp.forecasts[s.id];
+    if (f && f.forecasts.length > 0) {
+      const current = scales.find(sc => sc.id === s.id)?.index || 0;
+      const future = f.forecasts[f.forecasts.length - 1];
+      const change = future - current;
+      const arrow = change > 0.5 ? '↑' : change < -0.5 ? '↓' : '→';
+      const confPct = (f.confidence * 100).toFixed(0);
+      html += `<em>•</em> <strong>${s.name}</strong>: ${current.toFixed(1)} ${arrow} ${future.toFixed(1)} <span class="src">(R²=${confPct}%)</span><br>`;
+    }
+  });
+  html += `<br><strong>Прогноз фази:</strong> <em>${phaseUa(fp.fMode)}</em><br>`;
+  html += `<strong>Прогноз стресу:</strong> <span class="num">${fp.fStress.toFixed(1)}%</span> (зараз ${o.stress.toFixed(1)}%)<br>`;
+  html += `<strong>Загальна довіра:</strong> <span class="num">${(fp.confidence * 100).toFixed(0)}%</span><br>`;
+  html += `<br><strong>Інтерпретація:</strong><br>`;
+  if (fp.fStress > 60) html += `<em>•</em> Ризик фазового переходу у ФРАКТУРУ<br>`;
+  else if (fp.fStress > 40) html += `<em>•</em> Можливий перехід у НАПРУГУ<br>`;
+  else if (fp.confidence > 0.5) html += `<em>•</em> Стабільна фаза збережеться<br>`;
+  else html += `<em>•</em> Недостатньо даних для впевненого прогнозу<br>`;
+  html += `<br><span class="src">AR(1) модель · X_t = c + φ·X_{t-1} + e · довірчий інтервал 95%</span>`;
+  agentMessage(html, 'discovery', 'ПРОГНОЗ');
+}
+
+function reportSimulation() {
+  const scales = STATE.scales;
+  if (!scales.length) {
+    agentMessage('Дані ще завантажуються. Зачекайте...', 'bot', 'СИМУЛЯЦІЯ');
+    return;
+  }
+  const links = STATE.links;
+  let html = `<strong>СИМУЛЯЦІЇ · ЩО БУДЕ, ЯКЩО...</strong><br><br>`;
+  html += `<strong>Граф зв'язків:</strong> ${links.length} активних<br><br>`;
+  // Сценарій 1: сонячна буря Kp=7
+  html += `<strong>СЦЕНАРІЙ 1 · СОЛЯРНА БУРА (Kp=7)</strong><br>`;
+  const shock1 = simulateShock('space', -30, links);
+  shock1.forEach(e => {
+    const scale = SCALE_MAP[e.scaleId];
+    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span>${e.direct ? ' (прямий)' : ` (через ${SCALE_MAP[e.via]?.name || e.via}, глибина ${e.depth})`}<br>`;
+  });
+  // Сценарій 2: землетрус M6
+  html += `<br><strong>СЦЕНАРІЙ 2 · ЗЕМЛЕТРУС M6</strong><br>`;
+  const shock2 = simulateShock('planet', -25, links);
+  shock2.forEach(e => {
+    const scale = SCALE_MAP[e.scaleId];
+    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span>${e.direct ? ' (прямий)' : ' (опосередкований)'}<br>`;
+  });
+  // Сценарій 3: сплеск wiki
+  html += `<br><strong>СЦЕНАРІЙ 3 · ВІКІ-СПЛЕСК (+30)</strong><br>`;
+  const shock3 = simulateShock('knowledge', +30, links);
+  shock3.forEach(e => {
+    const scale = SCALE_MAP[e.scaleId];
+    if (scale) html += `<em>•</em> ${scale.name}: <span class="num">${e.delta > 0 ? '+' : ''}${e.delta.toFixed(1)}</span><br>`;
+  });
+  html += `<br><span class="src">Модель: BFS по графу зв'язків · decay=0.6 · maxDepth=3</span>`;
+  agentMessage(html, 'discovery', 'СИМУЛЯЦІЯ');
+}
+
+function reportParsers() {
+  const configs = getParserConfigs();
+  let html = `<strong>ПЛАГІННА АРХІТЕКТУРА ПАРСЕРІВ · ${configs.length} ДЖЕРЕЛ</strong><br><br>`;
+  html += `<strong>Конфіг-рушій:</strong> кожне джерело = JSON-конфіг, не код.<br>`;
+  html += `<em>Додати нове джерело = 10 рядків JSON</em><br><br>`;
+  html += `<strong>Активні парсери:</strong><br>`;
+  configs.forEach((p, i) => {
+    const cached = pluginCache[p.id];
+    const status = cached?.status || 'pending';
+    const statusColor = status === 'ok' ? 'var(--teal)' : status === 'fallback' ? 'var(--amber)' : status === 'error' ? 'var(--crimson)' : 'var(--soft-white-faint)';
+    const metric = cached?.metric !== null && cached?.metric !== undefined ? cached.metric : '—';
+    html += `<em>${i + 1}.</em> <strong>${p.name}</strong> <span style="color: ${statusColor};">[${status}]</span><br>`;
+    html += `<span class="src">  ${p.type} · ${p.cadence}с · ${p.scale || p.category} · метрика: ${metric}</span><br>`;
+  });
+  html += `<br><strong>Можливості:</strong><br>`;
+  html += `<em>•</em> JSON, proxy_json, html, proxy_html типи<br>`;
+  html += `<em>•</em> allorigins / corsproxy проксі<br>`;
+  html += `<em>•</em> dot-path екстракція (features.0.properties.mag)<br>`;
+  html += `<em>•</em> regex для HTML<br>`;
+  html += `<em>•</em> groupBy для агрегації<br>`;
+  html += `<em>•</em> filter для метрик (mag >= 4)<br>`;
+  html += `<em>•</em> fallback при помилках<br>`;
+  html += `<em>•</em> TTL-кеш по cadence<br>`;
+  html += `<br><span class="src">runAllParsers() запускає всі паралельно · addParser(config) додає на льоту</span>`;
+  agentMessage(html, 'discovery', 'ПАРСЕРИ');
+}
+
+function statusUa(s) {
+  return { stable: 'СТАБІЛЬНИЙ', active: 'АКТИВНИЙ', stressed: 'НАПРУЖЕНИЙ', critical: 'КРИТИЧНИЙ' }[s] || s;
+}
+
+// ─── РЕНДЕР UI ─────────────────────────────────────────────────────────────
+function renderCategories() {
+  const c = $('cat-list');
+  c.innerHTML = STATE.scales.map(s => {
+    const fmt = (n) => n >= 1e9 ? (n/1e9).toFixed(2)+'МЛР' : n >= 1e6 ? (n/1e6).toFixed(1)+'М' : n >= 1e3 ? (n/1e3).toFixed(1)+'К' : n < 10 && n % 1 !== 0 ? n.toFixed(1) : Math.round(n).toString();
+    return `<button class="cat-btn" data-cat="${s.id}" style="--accent: ${s.accent};">
+      <span class="cat-btn-num">${s.num}</span>
+      <span class="cat-btn-name">${s.name}</span>
+      <span class="cat-btn-val">${typeof s.value === 'number' && s.value < 100 && s.value % 1 !== 0 ? s.value.toFixed(1) : fmt(s.value)}</span>
+    </button>`;
+  }).join('');
+  c.querySelectorAll('.cat-btn').forEach(b => {
+    b.addEventListener('click', () => reportCategory(b.dataset.cat));
+  });
+  // Також рендер лабораторії
+  renderLabProjects();
+}
+
+function renderLabProjects() {
+  // приховано — лабораторія прибрана з UI
+}
+
+// ─── РЕНДЕР НОВИН ───────────────────────────────────────────────────────────
+function renderNews() {
+  const c = $('news-list');
+  const cnt = $('news-count');
+  if (cnt) cnt.textContent = STATE.news.length;
+  if (!c) return;
+  if (!STATE.news.length) {
+    c.innerHTML = '<div style="font-family: \'JetBrains Mono\', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 4px;">Завантажую новини...</div>';
+    return;
+  }
+  c.innerHTML = STATE.news.slice(0, 10).map(n => {
+    const age = Math.floor((now() - n.pubTs) / 60000);
+    const ageStr = age < 1 ? 'щойно' : age < 60 ? age + ' хв' : Math.floor(age / 60) + ' год';
+    return `<div class="news-item" style="--news-color: ${n.color};" data-link="${n.link}">
+      <div class="news-source">${n.source} · ${ageStr}</div>
+      <div class="news-title">${n.title}</div>
+    </div>`;
+  }).join('');
+  c.querySelectorAll('.news-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const link = item.dataset.link;
+      if (link) window.open(link, '_blank');
+    });
+  });
+}
+
+function renderLinks() {
+  const c = $('links-list');
+  if (!STATE.links.length) {
+    c.innerHTML = '<div style="font-family: \'JetBrains Mono\', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 4px;">Зв\'язки формуються...</div>';
+    return;
+  }
+  c.innerHTML = STATE.links.slice(0, 6).map(l => `
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; padding: 4px 6px; background: rgba(46, 196, 182, 0.04); border-left: 2px solid var(--teal); border-radius: 1px;">
+      <span style="color: var(--soft-white);">${l.from}</span>
+      <span style="color: ${l.direction === '+' ? 'var(--teal)' : 'var(--crimson)'};"> ${l.direction}↔ </span>
+      <span style="color: var(--soft-white);">${l.to}</span>
+      <span style="color: var(--teal); margin-left: 4px;">${l.strength.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+// ─── ЛОГ ПАРСЕРІВ ──────────────────────────────────────────────────────────
+function pushLog(entries) {
+  STATE.log.unshift(...entries);
+  if (STATE.log.length > 80) STATE.log.length = 80;
+}
+
+function renderLog() {
+  const c = $('log-feed');
+  const cnt = $('log-count');
+  if (cnt) cnt.textContent = STATE.log.length;
+  if (!c) return;
+  if (!STATE.log.length) {
+    c.innerHTML = '<div style="font-family: \'JetBrains Mono\', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 6px;">Запуск парсерів...</div>';
+    return;
+  }
+  c.innerHTML = STATE.log.slice(0, 24).map(e => {
+    const statusColor = e.status === 'ok' ? 'var(--teal)' : e.status === 'stream' ? 'var(--deep-blue)' : e.status === 'fetching' || e.status === 'streaming' ? 'var(--amber)' : e.status === 'blocked' ? 'var(--crimson)' : 'var(--soft-white-faint)';
+    const statusIcon = e.status === 'ok' ? '✓' : e.status === 'stream' ? '◉' : e.status === 'fetching' || e.status === 'streaming' ? '◌' : e.status === 'blocked' ? '✗' : '·';
+    const ts = new Date(e.ts).toISOString().slice(11, 19);
+    return `<div class="log-row" style="--log-color: ${statusColor};">
+      <span class="log-ts">${ts}</span>
+      <span class="log-status" style="color: ${statusColor};">${statusIcon}</span>
+      <span class="log-src">${e.src}</span>
+      <span class="log-val">${e.val || e.status}</span>
+      <span class="log-detail">${e.detail || ''}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderEventFeed() {
+  const c = $('event-feed');
+  $('event-count').textContent = STATE.events.length;
+  if (!STATE.events.length) {
+    c.innerHTML = '<div style="font-family: \'JetBrains Mono\', monospace; font-size: 8px; color: var(--soft-white-faint); padding: 8px;">Чекаю на події...</div>';
+    return;
+  }
+  c.innerHTML = STATE.events.slice(0, 20).map(e => {
+    const ts = new Date(e.ts).toISOString().slice(11, 19);
+    return `<div class="event-item" style="--ev-color: ${e.color};">
+      <div class="event-top">
+        <span class="event-type">${e.type}</span>
+        <span class="event-ts">${ts}</span>
+      </div>
+      <div class="event-title">${e.title}</div>
+      ${e.meta ? `<div class="event-meta">${e.meta}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderHeader() {
+  const d = new Date();
+  $('stat-utc').textContent = d.toISOString().slice(11, 19);
+  $('stat-obs').textContent = STATE.observations.toLocaleString('en-US');
+  $('stat-src').textContent = STATE.sourcesOnline + '/14';
+}
+
+// ─── АГЕНТ — ініціатива (сам пише) ─────────────────────────────────────────
+let lastInput = { quakes: [], eonet: [], kp: 2, flares: 0, btc: null, bigQuakes: 0, ghEvents: 0, ghReleases: 0, hnCount: 0, seCount: 0, osm: 0, flights: 0, population: 0, birthsToday: 0, deathsToday: 0, wikiRate: 0 };
+
+async function refresh() {
+  // ─── ЛОГ ПАРСЕРІВ — що агент робить прямо зараз ────────────────────
+  const logEntries = [
+    { src: 'WORLDOMETERS', status: 'fetching', ts: now() },
+    { src: 'WIKIMEDIA SSE', status: 'streaming', ts: now() },
+    { src: 'USGS', status: 'fetching', ts: now() },
+    { src: 'NASA EONET', status: 'fetching', ts: now() },
+    { src: 'NOAA SWPC', status: 'fetching', ts: now() },
+    { src: 'GITHUB', status: 'fetching', ts: now() },
+    { src: 'HACKER NEWS', status: 'fetching', ts: now() },
+    { src: 'OPENSKY', status: 'fetching', ts: now() },
+    { src: 'OPENSTREETMAP', status: 'fetching', ts: now() },
+    { src: 'STACK EXCHANGE', status: 'fetching', ts: now() },
+    { src: 'COINGECKO', status: 'fetching', ts: now() },
+    { src: 'RSS НОВИНИ (6)', status: 'fetching', ts: now() },
+  ];
+  pushLog(logEntries);
+  renderLog();
+
+  const t0 = performance.now();
+  const [world, quakesRaw, eonetRaw, sw, gh, hn, flights, osm, se, btc, lab, news] = await Promise.all([
+    fetchWorld(), fetchQuakes(), fetchEonet(), fetchSpaceWx(),
+    fetchGithub(), fetchHn(), fetchFlights(), fetchOsm(), fetchSe(), fetchBtc(),
+    fetchLabProjects(), fetchNews(),
+  ]);
+  const elapsed = (performance.now() - t0).toFixed(0);
+
+  // ─── ЛОГ — результати ──────────────────────────────────────────────
+  pushLog([
+    { src: 'WORLDOMETERS', status: 'ok', val: world.population.toLocaleString('en-US'), detail: `+${world.birthsToday.toLocaleString('en-US')} народж.`, ts: now() },
+    { src: 'WIKIMEDIA SSE', status: 'stream', val: sampleWiki().toFixed(1) + ' Гц', detail: 'редагувань/сек', ts: now() },
+    { src: 'USGS', status: 'ok', val: quakesRaw.length + ' подій', detail: quakesRaw.filter(q => q.mag >= 4).length + ' M4+', ts: now() },
+    { src: 'NASA EONET', status: 'ok', val: eonetRaw.length + ' катастроф', detail: eonetRaw.filter(e => e.type === 'wildfires').length + ' пожеж', ts: now() },
+    { src: 'NOAA SWPC', status: 'ok', val: 'Kp=' + sw.kp, detail: sw.flares + ' M/X спалахів', ts: now() },
+    { src: 'GITHUB', status: 'ok', val: gh.count + ' подій', detail: gh.releases + ' релізів', ts: now() },
+    { src: 'HACKER NEWS', status: 'ok', val: hn.count + ' постів', detail: hn.newestTitle ? hn.newestTitle.slice(0, 40) : '—', ts: now() },
+    { src: 'OPENSKY', status: flights > 0 ? 'ok' : 'fallback', val: flights.toLocaleString('en-US') + ' бортів', detail: 'у повітрі', ts: now() },
+    { src: 'OPENSTREETMAP', status: 'ok', val: osm + ' changesets', detail: 'останні', ts: now() },
+    { src: 'STACK EXCHANGE', status: se.count > 0 ? 'ok' : 'blocked', val: se.count + ' питань', detail: 'StackOverflow', ts: now() },
+    { src: 'COINGECKO', status: btc.price > 0 ? 'ok' : 'blocked', val: btc.price > 0 ? '$' + btc.price.toLocaleString('en-US') : '—', detail: btc.price > 0 ? (btc.change24h >= 0 ? '+' : '') + btc.change24h.toFixed(1) + '%' : 'CORS', ts: now() },
+    { src: 'ЛАБОРАТОРІЯ', status: 'ok', val: Object.values(lab).filter(p => p.status === 'online').length + '/5 онлайн', detail: Object.values(lab).filter(p => p.type === 'repo' && p.commits).reduce((a, p) => a + p.commits, 0) + ' коммітів', ts: now() },
+    { src: 'RSS НОВИНИ', status: news.length > 0 ? 'ok' : 'blocked', val: news.length + ' статей', detail: news.length ? news[0].source + ': ' + news[0].title.slice(0, 35) : 'CORS', ts: now() },
+  ]);
+  renderLog();
+
+  const bigQuakes = quakesRaw.filter(q => q.mag >= 4).length;
+  const wr = sampleWiki();
+  const input = {
+    population: world.population, birthsToday: world.birthsToday, deathsToday: world.deathsToday,
+    wikiRate: wr, ghEvents: gh.count, ghReleases: gh.releases,
+    hnCount: hn.count, seCount: se.count, osmCount: osm, flights,
+    quakes: quakesRaw, bigQuakes, eonet: eonetRaw, kp: sw.kp, flares: sw.flares, btc,
+    lab,
+  };
+  lastInput = input;
+  const scales = computeScales(input);
+  const organism = computeOrganism(scales);
+  
+  // ─── ПОРІВНЯННЯ З ПОПЕРЕДНІМ СТАНОМ — що змінилось ─────────────────
+  const changes = [];
+  if (STATE.organism) {
+    if (organism.mode !== STATE.organism.mode) {
+      changes.push({ type: 'phase', text: `Фазовий перехід: <strong>${phaseUa(STATE.organism.mode)} → ${phaseUa(organism.mode)}</strong>. Стрес ${organism.stress.toFixed(0)}%, когерентність ${organism.coherence.toFixed(0)}%.` });
+    }
+    if (Math.abs(organism.stress - STATE.organism.stress) > 15) {
+      changes.push({ type: 'stress', text: `Стрес змінився на <span class="num">${(organism.stress - STATE.organism.stress).toFixed(0)}</span> пунктів (зараз ${organism.stress.toFixed(0)}%).` });
+    }
+  }
+  if (STATE.prevQuakes !== undefined && bigQuakes > STATE.prevQuakes) {
+    const newOnes = quakesRaw.filter(q => q.mag >= 4).slice(0, bigQuakes - STATE.prevQuakes);
+    newOnes.forEach(q => {
+      changes.push({ type: 'quake', text: `<strong>Новий землетрус M${q.mag.toFixed(1)}</strong> — ${q.title}. Глибина ${q.depth.toFixed(0)}км.${q.tsunami ? ' <em>ЦУНАМІ-РИЗИК</em>' : ''}` });
+    });
+  }
+  STATE.prevQuakes = bigQuakes;
+  if (STATE.prevKp !== undefined && sw.kp > STATE.prevKp && sw.kp >= 4) {
+    changes.push({ type: 'solar', text: `<strong>Сонячна активність зросла</strong> — Kp ${STATE.prevKp} → ${sw.kp}.${sw.kp >= 5 ? ' <em>Геомагнітна буря.</em>' : ''}` });
+  }
+  STATE.prevKp = sw.kp;
+  if (STATE.prevWikiRate !== undefined && wr > STATE.prevWikiRate * 1.5 && wr > 10) {
+    changes.push({ type: 'wiki', text: `<strong>Вікі-сплеск</strong> — ${STATE.prevWikiRate.toFixed(1)} → ${wr.toFixed(1)} ред/сек. Можливо велика подія в світі.` });
+  }
+  STATE.prevWikiRate = wr;
+  if (STATE.prevGhReleases !== undefined && gh.releases > STATE.prevGhReleases) {
+    changes.push({ type: 'release', text: `<strong>Нові релізи на GitHub</strong> — +${gh.releases - STATE.prevGhReleases}. Когнітивна активність зросла.` });
+  }
+  STATE.prevGhReleases = gh.releases;
+  if (STATE.prevBtc !== undefined && btc.price > 0 && Math.abs(btc.change24h - STATE.prevBtc.change24h) > 2) {
+    changes.push({ type: 'market', text: `<strong>Ринок рухається</strong> — BTC ${btc.change24h >= 0 ? '+' : ''}${btc.change24h.toFixed(1)}% (було ${STATE.prevBtc.change24h >= 0 ? '+' : ''}${STATE.prevBtc.change24h.toFixed(1)}%).` });
+  }
+  STATE.prevBtc = btc;
+  // Нові релізи в проєктах лабораторії
+  if (STATE.prevLabReleases) {
+    Object.values(lab).forEach(p => {
+      if (p.type === 'repo' && p.releases !== undefined) {
+        const prev = STATE.prevLabReleases[p.id] || 0;
+        if (p.releases > prev) {
+          changes.push({ type: 'lab', text: `<strong>${p.name}</strong> — новий реліз ${p.lastReleaseTag} (${p.lastReleaseDate}).` });
+        }
+      }
+    });
+  }
+  STATE.prevLabReleases = {};
+  Object.values(lab).forEach(p => {
+    if (p.type === 'repo') STATE.prevLabReleases[p.id] = p.releases || 0;
+  });
+  // Новий комміт у проєктах
+  if (STATE.prevLabCommits) {
+    Object.values(lab).forEach(p => {
+      if (p.type === 'repo' && p.commits !== undefined) {
+        const prev = STATE.prevLabCommits[p.id] || 0;
+        if (p.commits > prev && p.lastCommitMsg !== '—') {
+          changes.push({ type: 'lab', text: `<strong>${p.name}</strong> — новий комміт: "${p.lastCommitMsg.slice(0, 60)}" (${p.lastCommitAuthor}).` });
+        }
+      }
+    });
+  }
+  STATE.prevLabCommits = {};
+  Object.values(lab).forEach(p => {
+    if (p.type === 'repo') STATE.prevLabCommits[p.id] = p.commits || 0;
+  });
+
+  // ─── НОВІ НОВИНИ — агент повідомляє про свіжі ──────────────────────
+  if (news.length > 0) {
+    if (!STATE.prevNewsIds) STATE.prevNewsIds = new Set();
+    const freshNews = news.filter(n => !STATE.prevNewsIds.has(n.id)).slice(0, 3);
+    freshNews.forEach(n => {
+      changes.push({ type: 'news', text: `<strong>${n.source}</strong> · ${n.title}<br><span class="src">${n.pubStr} UTC</span>` });
+    });
+    // Оновити список побачених
+    STATE.prevNewsIds = new Set(news.map(n => n.id));
+  }
+
+  STATE.world = world; STATE.scales = scales; STATE.organism = organism;
+  STATE.wikiRate = wr;
+  STATE.labProjects = lab;
+  STATE.news = news;
+  STATE.sourcesOnline = 20;  // 14 OSINT + 5 лаб + RSS новини
+  STATE.observations += 20;
+  STATE.lastRefresh = now();
+
+  // ─── ЗБЕРЕЖЕННЯ В PERSISTENT MEMORY ────────────────────────────────
+  // Зберігаємо кожне спостереження по шкалі + знімок стану
+  scales.forEach(s => {
+    memSaveObservation(s.id, s.value, 'system', { index: s.index, status: s.status });
+    // Оновити baseline для z-score
+    baselinePush(s.id, s.index);
+  });
+  memSaveSnapshot(scales, organism);
+
+  // ─── МЕТАПІЗНАННЯ · перевірити старі прогнози ──────────────────────
+  verifyForecasts(scales);
+
+  // ─── Зберегти нові прогнози для перевірки ──────────────────────────
+  if (STATE.observations % 30 === 0) {  // кожні ~30 циклів
+    SCALES.forEach(s => {
+      const series = (baselineCache[s.id] || []).map(p => p.value);
+      if (series.length >= 8) {
+        const f = forecastAR1(series, 3);
+        if (f.forecasts.length > 0) {
+          saveForecastForVerification(s.id, f.forecasts[f.forecasts.length - 1], 3);
+        }
+      }
+    });
+  }
+
+  // Зберігаємо знайдені зв'язки
+  if (STATE.links.length > 0) {
+    STATE.links.forEach(l => memSaveLink(l));
+  }
+
+  // ─── СТАТИСТИЧНІ АНОМАЛІЇ (z-score > 2.5σ) ─────────────────────────
+  const statAnoms = detectStatAnomalies(scales);
+  statAnoms.forEach(a => {
+    const key = 'stat-' + a.scaleId + '|' + Math.floor(now() / 600000);
+    if (!STATE.recentAlerts.has(key)) {
+      STATE.recentAlerts.add(key);
+      if (STATE.recentAlerts.size > 50) {
+        const arr = Array.from(STATE.recentAlerts);
+        STATE.recentAlerts = new Set(arr.slice(-30));
+      }
+      memSaveAnomaly({ type: a.title, severity: a.severity, title: a.title, desc: a.desc });
+      setTimeout(() => {
+        agentMessage(`<strong>${a.title}.</strong> ${a.desc}<br><span class="src">Z-score: ${a.zScore.toFixed(2)}σ · поточне: ${a.current.toFixed(1)} · норма: ${a.mean.toFixed(1)}±${a.std.toFixed(1)}</span>`, 'alert', 'СТАТИСТИКА');
+      }, changes.length * 800 + 2000);
+      }
+  });
+
+  // ─── АГЕНТ САМ ПИШЕ ПРО ЗМІНИ ──────────────────────────────────────
+  changes.forEach((ch, i) => {
+    setTimeout(() => {
+      const type = ch.type === 'quake' || ch.type === 'solar' ? 'alert' : ch.type === 'lab' || ch.type === 'release' || ch.type === 'phase' ? 'discovery' : 'bot';
+      const tag = { phase: 'ФАЗА', quake: 'АЛЕРТ', solar: 'АЛЕРТ', wiki: 'ЗНАХІДКА', release: 'РЕЛІЗ', market: 'РИНОК', lab: 'ЛАБ', stress: 'ТРЕНД', news: 'НОВИНА' }[ch.type] || 'ЗВІТ';
+      agentMessage(ch.text, type, tag);
+    }, i * 800);
+  });
+
+  // ─── ЗВ'ЯЗКИ КОЖНІ 3 ЦИКЛИ ─────────────────────────────────────────
+  if (STATE.observations % 57 === 0) {
+    // Підготувати дані для лагового аналізу
+    const scalesData = {};
+    SCALES.forEach(s => {
+      scalesData[s.id] = (baselineCache[s.id] || []).map(p => p.value);
+    });
+    STATE.links = findLaggedLinks(scalesData);
+    renderLinks();
+    if (STATE.links.length > 0) {
+      const topLink = STATE.links[0];
+      const lagStr = topLink.lag !== 0 ? ` (лаг ${topLink.lag > 0 ? '+' : ''}${topLink.lag})` : '';
+      const grangerStr = topLink.causality !== 'none' ? ` · Granger: ${topLink.causality === 'AB' ? topLink.from + ' → ' + topLink.to : topLink.causality === 'BA' ? topLink.to + ' → ' + topLink.from : 'двосторонній'}` : '';
+      setTimeout(() => {
+        agentMessage(
+          `<strong>Знайдено зв'язок:</strong> <em>${topLink.direction}</em> <strong>${topLink.from}</strong> ↔ <strong>${topLink.to}</strong> — кореляція <span class="num">${topLink.strength.toFixed(2)}</span>${lagStr}${grangerStr}<br><span class="src">p-value: ${topLink.pValue.toFixed(3)} · ${topLink.significant ? 'значущий' : 'не значущий'}</span>`,
+          'discovery', 'ЗВ\'ЯЗОК'
+        );
+      }, changes.length * 800 + 500);
+    }
+  }
+
+  // ─── АНОМАЛІЇ ──────────────────────────────────────────────────────
+  const anoms = detectAnomalies(input);
+  anoms.forEach(a => {
+    const key = a.title + '|' + Math.floor(now() / 600000);
+    if (!STATE.recentAlerts.has(key)) {
+      STATE.recentAlerts.add(key);
+      if (STATE.recentAlerts.size > 50) {
+        const arr = Array.from(STATE.recentAlerts);
+        STATE.recentAlerts = new Set(arr.slice(-30));
+      }
+      // Зберегти аномалію в пам'ять
+      memSaveAnomaly({ type: a.title, severity: a.sev || 'warn', title: a.title, desc: a.desc });
+      setTimeout(() => {
+        agentMessage(`<strong>${a.title}.</strong> ${a.desc}`, 'alert', 'АЛЕРТ');
+      }, changes.length * 800 + 1500);
+    }
+  });
+
+  renderCategories();
+  renderNews();
+  renderHeader();
+
+  // ─── ПОТІК ПОДІЙ (права колонка) ───────────────────────────────────
+  const newEvents = [];
+  quakesRaw.filter(q => q.mag >= 4).slice(0, 2).forEach(q => {
+    newEvents.push({ ts: now(), type: 'ЗЕМЛЕТРУС', title: `M${q.mag.toFixed(1)} · ${q.title}`, meta: `глибина ${q.depth.toFixed(0)}км`, color: '#E63946' });
+  });
+  if (sw.kp >= 4) newEvents.push({ ts: now(), type: 'СОЛЯРНА', title: `Kp${sw.kp} · ${sw.flares} спалахів`, meta: 'космічна погода', color: '#FFC76B' });
+  eonetRaw.slice(0, 2).forEach(e => newEvents.push({ ts: now(), type: e.type.toUpperCase(), title: e.title, meta: 'NASA EONET', color: '#D4A24C' }));
+  if (gh.releases > 0) newEvents.push({ ts: now(), type: 'РЕЛІЗ', title: `${gh.releases} нових релізів GitHub`, meta: 'когнітивна активність', color: '#2EC4B6' });
+  if (btc && Math.abs(btc.change24h) > 3) newEvents.push({ ts: now(), type: 'РИНОК', title: `BTC ${btc.change24h >= 0 ? '+' : ''}${btc.change24h.toFixed(1)}%`, meta: `$${btc.price.toLocaleString('en-US')}`, color: btc.change24h >= 0 ? '#2EC4B6' : '#E63946' });
+  // Події лабораторії
+  Object.values(lab).forEach(p => {
+    if (p.type === 'repo' && p.releases > 0 && p.lastReleaseDate !== '—') {
+      newEvents.push({ ts: now(), type: 'ЛАБ', title: `${p.name} · ${p.lastReleaseTag}`, meta: p.lastReleaseDate, color: p.accent });
+    }
+  });
+  if (newEvents.length) {
+    STATE.events.unshift(...newEvents);
+    if (STATE.events.length > 60) STATE.events.length = 60;
+    renderEventFeed();
+  }
+
+  // ─── СТАН АГЕНТА ───────────────────────────────────────────────────
+  const stateEl = $('agent-state');
+  if (stateEl) {
+    if (changes.length > 0) {
+      stateEl.textContent = 'АНАЛІЗУЄ · ' + changes.length + ' ЗМІН';
+      stateEl.style.color = 'var(--amber)';
+      setTimeout(() => {
+        stateEl.textContent = 'СПОСТЕРЕЖЕННЯ';
+        stateEl.style.color = 'var(--teal)';
+      }, 5000);
+    } else {
+      stateEl.textContent = 'СПОСТЕРЕЖЕННЯ';
+      stateEl.style.color = 'var(--teal)';
+    }
+  }
+  const headerState = $('header-state');
+  if (headerState) {
+    headerState.textContent = changes.length > 0 ? `АНАЛІЗ · ${changes.length} ЗМІН` : 'СПОСТЕРЕЖЕННЯ';
+  }
+}
+
+function computeOrganism(scales) {
+  const byId = Object.fromEntries(scales.map(s => [s.id, s]));
+  const stress = clamp((100 - byId.planet.index) * 0.5 + (100 - byId.space.index) * 0.3 + (100 - byId.info.index) * 0.2, 0, 100);
+  const fractures = scales.filter(s => s.status === 'critical' || s.status === 'stressed').length;
+  const layerIdx = scales.map(s => s.index);
+  const mean = layerIdx.reduce((a, b) => a + b, 0) / layerIdx.length;
+  const variance = layerIdx.reduce((a, b) => a + (b - mean) ** 2, 0) / layerIdx.length;
+  const coherence = clamp(100 - Math.sqrt(variance) * 2, 0, 100);
+  let mode;
+  if (stress > 60 || fractures >= 4) mode = 'FRACTURE';
+  else if (stress > 40) mode = 'TENSION';
+  else if (byId.knowledge.index > 70 && byId.ai.index > 50) mode = 'SYNC';
+  else if (byId.knowledge.index > 60) mode = 'EXPANSION';
+  else if (stress < 20 && coherence > 75) mode = 'STABILITY';
+  else if (byId.knowledge.index < 25) mode = 'DEEP';
+  else mode = 'STABILITY';
+  return { stress, fractures, coherence, mode, neuralActivity: byId.knowledge.index };
+}
+
+// ─── ФОН — туманність (тиха) ───────────────────────────────────────────────
+function initBg() {
+  const canvas = $('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let DPR = window.devicePixelRatio || 1;
+  let stars = [], dust = [];
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * DPR;
+    canvas.height = window.innerHeight * DPR;
+    // Зірки
+    stars = [];
+    for (let i = 0; i < 200; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: (0.3 + Math.random() * 1) * DPR,
+        brightness: 0.2 + Math.random() * 0.5,
+        phase: Math.random() * TAU,
+        twinkle: 0.0005 + Math.random() * 0.002,
+      });
+    }
+    // Пил
+    dust = [];
+    for (let i = 0; i < 60; i++) {
+      dust.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.05,
+        vy: (Math.random() - 0.5) * 0.05,
+        size: (0.5 + Math.random() * 1.5) * DPR,
+        brightness: 0.1 + Math.random() * 0.2,
+        phase: Math.random() * TAU,
+      });
+    }
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw(ts) {
+    ctx.fillStyle = '#020304';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Легкий газовий відтінок
+    const grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width * 0.6);
+    grad.addColorStop(0, 'hsla(35, 60%, 30%, 0.06)');
+    grad.addColorStop(0.5, 'hsla(220, 50%, 25%, 0.03)');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Зірки
+    for (const s of stars) {
+      const tw = 0.7 + Math.sin(ts * s.twinkle + s.phase) * 0.3;
+      ctx.fillStyle = `rgba(220, 230, 255, ${s.brightness * tw})`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, TAU);
+      ctx.fill();
+    }
+    // Пил
+    for (const p of dust) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height; if (p.y > canvas.height) p.y = 0;
+      const fl = 0.5 + Math.sin(ts * 0.001 + p.phase) * 0.5;
+      ctx.fillStyle = `hsla(35, 60%, 60%, ${p.brightness * fl * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, TAU);
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+}
+
+// ─── ОБРОБНИКИ ─────────────────────────────────────────────────────────────
+function setupInput() {
+  document.querySelectorAll('.quick-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      const q = b.dataset.q;
+      userMessage(b.textContent);
+      setTimeout(() => answer(q), 300);
+    });
+  });
+}
+
+// ─── СЛІДКУВАННЯ ОЧЕЙ ЗА МИШКОЮ ─────────────────────────────────────────────
+function setupEyeTracking() {
+  const eyes = document.querySelectorAll('.agent-eye');
+  const head = document.querySelector('.agent-head');
+  if (!eyes.length || !head) return;
+  document.addEventListener('mousemove', (e) => {
+    const rect = head.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / 20;
+    const dy = (e.clientY - cy) / 20;
+    const maxOffset = 5;
+    const tx = Math.max(-maxOffset, Math.min(maxOffset, dx));
+    const ty = Math.max(-maxOffset, Math.min(maxOffset, dy));
+    eyes.forEach(eye => {
+      eye.style.transform = `translate(${tx}px, ${ty}px)`;
+    });
+  });
+}
+
+// ─── ІНІТ ──────────────────────────────────────────────────────────────────
+function init() {
+  initBg();
+  subscribeWiki();
+  setupInput();
+  setupEyeTracking();
+  setInterval(renderHeader, 1000);
+  renderHeader();
+  // Відкрити IndexedDB, потім стартувати refresh
+  dbOpen().then(async () => {
+    // Показати що відновлено з пам'яті
+    const stats = await memStats();
+    if (stats.obs > 0) {
+      const since = stats.firstTs ? new Date(stats.firstTs).toISOString().slice(0, 10) : '—';
+      setTimeout(() => {
+        agentMessage(
+          `<strong>Пам'ять відновлено.</strong><br>` +
+          `Завантажено з IndexedDB: <span class="num">${stats.obs.toLocaleString('en-US')}</span> спостережень, ` +
+          `<span class="num">${stats.anoms}</span> аномалій, <span class="num">${stats.links}</span> зв'язків, ` +
+          `<span class="num">${stats.msgs}</span> повідомлень.<br>` +
+          `<span class="src">Перше спостереження: ${since} · пам'ять зберігається 90 днів</span>`,
+          'bot', 'ПАМ\'ЯТЬ'
+        );
+      }, 800);
+    }
+    // Очистити старі дані
+    memCleanup();
+    return refresh();
+  }).then(() => {
+    setTimeout(() => {
+      agentMessage(
+        `З\'єднано з <strong>OSINT-джерелами</strong>. Спостерігаю за цивілізацією.<br><br>` +
+        `Зараз на планеті <span class="num">${STATE.world ? STATE.world.population.toLocaleString('en-US') : '...'}</span> живих одиниць свідомості. ` +
+        `Система в фазі <strong>${STATE.organism ? phaseUa(STATE.organism.mode) : '—'}</strong>.`,
+        'bot', 'ЗАПУСК'
+      );
+    }, 3000);
+  }).catch(() => {
+    // Якщо IndexedDB недоступний — працювати без пам'яті
+    refresh();
+  });
+  setInterval(refresh, 10000);
+  // Населення — кожні 500мс
+  setInterval(() => {
+    if (!STATE.world) return;
+    const dt = 0.5;
+    const bps = (STATE.world.birthsToday / 86400) * 1.0 + 4.3 * 0.5;
+    const dps = (STATE.world.deathsToday / 86400) * 1.0 + 2.0 * 0.5;
+    STATE.world = { ...STATE.world,
+      population: Math.round(STATE.world.population + (bps - dps) * dt),
+      birthsToday: Math.round(STATE.world.birthsToday + bps * dt),
+      deathsToday: Math.round(STATE.world.deathsToday + dps * dt), ts: now() };
+    renderCategories();
+  renderNews();
+  }, 500);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+</script>
+</body>
+</html>
