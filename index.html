@@ -27,6 +27,7 @@
   --deep-blue-soft: #5A9FE8;
   --teal: #2EC4B6;
   --crimson: #E63946;
+  --purple: #9B59B6;
   --gold: #D4A24C;
   --border: rgba(236, 238, 242, 0.06);
   --border-strong: rgba(245, 166, 35, 0.25);
@@ -543,6 +544,8 @@ html, body {
           <button class="quick-btn" data-q="аномалії">Аномалії</button>
           <button class="quick-btn" data-q="звязки">Зв'язки</button>
           <button class="quick-btn" data-q="новини">Новини</button>
+          <button class="quick-btn" data-q="конфлікти">Конфлікти</button>
+          <button class="quick-btn" data-q="геополітика">Геополітика</button>
           <button class="quick-btn" data-q="пам'ять">Пам'ять</button>
           <button class="quick-btn" data-q="парсери">Парсери</button>
           <button class="quick-btn" data-q="населення">Населення</button>
@@ -1404,6 +1407,40 @@ const PARSER_CONFIGS = [
     scale: 'economy',
     metric: { type: 'value', field: 'price', label: 'BTC ціна' },
   },
+  {
+    id: 'gdelt_conflict',
+    name: 'GDELT CONFLICT',
+    category: 'conflicts',
+    type: 'json',
+    url: 'https://api.gdeltproject.org/api/v2/doc/doc?query=conflict%20OR%20war%20OR%20military%20OR%20attack&mode=ArtList&maxrecords=20&format=json&timespan=15min&sort=DateDesc',
+    cadence: 120,
+    extract: { path: 'articles', type: 'array' },
+    scale: 'conflicts',
+    metric: { type: 'count', label: 'Конфліктних статей' },
+  },
+  {
+    id: 'acled',
+    name: 'ACLED',
+    category: 'conflicts',
+    type: 'proxy_json',
+    url: 'https://api.acleddata.com/acled/read?limit=20&fields=event_type,country,fatalities,event_date,notes&order=event_date&sort=desc',
+    proxy: 'allorigins',
+    cadence: 300,
+    extract: { path: 'data', type: 'array' },
+    scale: 'conflicts',
+    metric: { type: 'count', label: 'ACLED подій' },
+  },
+  {
+    id: 'gdelt_geopolitics',
+    name: 'GDELT GEOPOLITICS',
+    category: 'geopolitics',
+    type: 'json',
+    url: 'https://api.gdeltproject.org/api/v2/doc/doc?query=geopolitics%20OR%20sanctions%20OR%20nuclear%20OR%20NATO%20OR%20diplomacy&mode=ArtList&maxrecords=15&format=json&timespan=1h&sort=DateDesc',
+    cadence: 180,
+    extract: { path: 'articles', type: 'array' },
+    scale: 'geopolitics',
+    metric: { type: 'value', field: 'tone', label: 'Геопол. стрес' },
+  },
 ];
 
 // Кеш плагінних парсерів (для TTL)
@@ -1590,6 +1627,8 @@ const SCALES = [
   { id: 'knowledge', num: '07', name: 'ЗНАННЯ',     fn: 'ПАМ\'ЯТЬ',    accent: '#2E7BD6' },
   { id: 'info',      num: '08', name: 'ІНФОРМАЦІЯ', fn: 'НЕРВИ',       accent: '#2E7BD6' },
   { id: 'ai',        num: '09', name: 'ШІ',         fn: 'КОГНІЦІЯ',    accent: '#2EC4B6' },
+  { id: 'conflicts', num: '10', name: 'КОНФЛІКТИ',  fn: 'ІМУНІТЕТ',    accent: '#E63946' },
+  { id: 'geopolitics', num: '11', name: 'ГЕОПОЛІТИКА', fn: 'РЕФЛЕКСИ',  accent: '#9B59B6' },
 ];
 const SCALE_MAP = Object.fromEntries(SCALES.map(s => [s.id, s]));
 SCALES.forEach(s => { STATE.history[s.id] = []; });
@@ -1746,6 +1785,125 @@ async function fetchBtc() {
   } catch { return cachedBtc || { price: 0, change24h: 0 }; }
 }
 
+// ─── ПАРСЕРИ КОНФЛІКТІВ · API + RSS ─────────────────────────────────────────
+
+// GDELT Global Knowledge Graph — моніторинг конфліктів у реальному часі
+let cachedGdelt = { events: [], conflictCount: 0, tone: 0, themes: [] }, gdeltTs = 0;
+async function fetchGdelt() {
+  if (now() - gdeltTs < 120000 && cachedGdelt.conflictCount) return cachedGdelt;
+  try {
+    // GDELT last update — події за останні 15 хвилин з фільтром конфліктів
+    const res = await fetch('https://api.gdeltproject.org/api/v2/doc/doc?query=conflict%20OR%20war%20OR%20military%20OR%20attack%20OR%20escalation&mode=ArtList&maxrecords=20&format=json&timespan=15min&sort=DateDesc', { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('gdelt ' + res.status);
+    const data = await res.json();
+    const articles = (data.articles || []).map(a => ({
+      id: 'gdelt-' + (a.url || '').slice(0, 30),
+      title: a.title || '—',
+      source: a.source || 'GDELT',
+      url: a.url || '',
+      pubTs: a.seendate ? new Date(a.seendate).getTime() : now(),
+      tone: parseFloat(a.seentone) || 0,
+      country: a.country || '',
+      themes: (a.themes || '').split(';').filter(Boolean).slice(0, 3),
+    }));
+    // Конфліктний тон (негативний = більше конфліктів)
+    const avgTone = articles.length ? articles.reduce((s, a) => s + a.tone, 0) / articles.length : 0;
+    // Домінантні теми
+    const themeMap = {};
+    articles.forEach(a => a.themes.forEach(t => { themeMap[t] = (themeMap[t] || 0) + 1; }));
+    const topThemes = Object.entries(themeMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, c]) => ({ theme: t, count: c }));
+    cachedGdelt = { events: articles, conflictCount: articles.length, tone: avgTone, themes: topThemes };
+    gdeltTs = now();
+    return cachedGdelt;
+  } catch {
+    return cachedGdelt;
+  }
+}
+
+// ACLED — Armed Conflict Location & Event Data (проксі через allorigins)
+let cachedAcled = { events: [], activeConflicts: 0, fatalities: 0, regions: {} }, acledTs = 0;
+async function fetchAcled() {
+  if (now() - acledTs < 300000 && cachedAcled.activeConflicts) return cachedAcled;
+  try {
+    // ACLED API (публічний) — останні події конфліктів
+    const acledUrl = 'https://api.acleddata.com/acled/read?limit=20&fields=event_type,country,fatalities,event_date,notes&order=event_date&sort=desc';
+    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(acledUrl), { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('acled ' + res.status);
+    const data = await res.json();
+    const events = (data.data || []).map(e => ({
+      type: e.event_type || 'невідомо',
+      country: e.country || '—',
+      fatalities: parseInt(e.fatalities) || 0,
+      date: e.event_date || '—',
+      notes: (e.notes || '').slice(0, 150),
+    }));
+    // Агрегація
+    const activeConflicts = new Set(events.map(e => e.country)).size;
+    const fatalities = events.reduce((s, e) => s + e.fatalities, 0);
+    const regions = {};
+    events.forEach(e => { regions[e.country] = (regions[e.country] || 0) + 1; });
+    cachedAcled = { events, activeConflicts, fatalities, regions };
+    acledTs = now();
+    return cachedAcled;
+  } catch {
+    return cachedAcled;
+  }
+}
+
+// UCDP — Uppsala Conflict Data Program (проксі)
+let cachedUcdp = { activeWars: 0, countries: [], intensity: 'low' }, ucdpTs = 0;
+async function fetchUcdp() {
+  if (now() - ucdpTs < 600000 && cachedUcdp.activeWars) return cachedUcdp;
+  try {
+    // UCDP Georeferenced Events — останні події
+    const ucdpUrl = 'https://ucdpapi.pcr.uu.se/api/gedevents/24.1?pagesize=20&sort=desc&StartDate=2025-01-01';
+    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(ucdpUrl), { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('ucdp ' + res.status);
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data.Result || []);
+    const activeWars = new Set(rows.map(r => r.conflict_name || r.side_a || 'unknown')).size;
+    const countries = [...new Set(rows.map(r => r.country || '—'))].slice(0, 10);
+    const bestFat = rows.reduce((s, r) => s + (parseInt(r.best_est) || parseInt(r.deaths_a) || 0), 0);
+    const intensity = bestFat > 1000 ? 'high' : bestFat > 100 ? 'medium' : 'low';
+    cachedUcdp = { activeWars, countries, intensity, events: rows.length, fatalities: bestFat };
+    ucdpTs = now();
+    return cachedUcdp;
+  } catch {
+    // Fallback — статичні оцінки з відкритих даних
+    if (!cachedUcdp.activeWars) {
+      cachedUcdp = { activeWars: 32, countries: ['Україна', 'Судан', 'М\'янма', 'Сирія', 'Ємен', 'Ізраїль-Палестина', 'ДРК', 'Ефіопія', 'Сомалі', 'Афганістан'], intensity: 'high', events: 0, fatalities: 0, fallback: true };
+    }
+    return cachedUcdp;
+  }
+}
+
+// Геополитичний стрес-індекс — агрегація з кількох джерел
+let cachedGeoStress = { score: 45, sanctions: 0, nukeRisk: 'low', tradeWars: 0, alliances: 0 }, geoStressTs = 0;
+async function fetchGeoStress() {
+  if (now() - geoStressTs < 180000 && cachedGeoStress.score) return cachedGeoStress;
+  try {
+    // GDELT — тональність новин по геополітиці (негатив = стрес)
+    const res = await fetch('https://api.gdeltproject.org/api/v2/doc/doc?query=geopolitics%20OR%20sanctions%20OR%20nuclear%20OR%20NATO%20OR%20diplomacy&mode=ArtList&maxrecords=15&format=json&timespan=1h&sort=DateDesc', { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('geo ' + res.status);
+    const data = await res.json();
+    const articles = data.articles || [];
+    const avgTone = articles.length ? articles.reduce((s, a) => s + (parseFloat(a.seentone) || 0), 0) / articles.length : 0;
+    // Чи є ключові слова високого ризику
+    const nukeKeywords = articles.filter(a => /nuclear|nuk|ядерн|атомн/i.test(a.title || '')).length;
+    const sanctionsKeywords = articles.filter(a => /sanction|санкц/i.test(a.title || '')).length;
+    const tradeKeywords = articles.filter(a => /trade%20war|tariff|мито|торгів/i.test(a.title || '')).length;
+    const allianceKeywords = articles.filter(a => /NATO|NATO|alliance|альянс/i.test(a.title || '')).length;
+    // Стрес-індекс: 0-100 (вищий = гірший)
+    const score = clamp(50 + (avgTone * -3) + nukeKeywords * 8 + sanctionsKeywords * 3 + tradeKeywords * 2, 5, 100);
+    const nukeRisk = nukeKeywords >= 3 ? 'high' : nukeKeywords >= 1 ? 'medium' : 'low';
+    cachedGeoStress = { score, sanctions: sanctionsKeywords, nukeRisk, tradeWars: tradeKeywords, alliances: allianceKeywords, articleCount: articles.length, tone: avgTone, _articles: articles.slice(0, 10) };
+    geoStressTs = now();
+    return cachedGeoStress;
+  } catch {
+    return cachedGeoStress;
+  }
+}
+
 // ─── ПАРСЕР НОВИН · RSS через rss2json ──────────────────────────────────────
 const NEWS_FEEDS = [
   { id: 'bbc',       name: 'BBC',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',           color: '#BB1919' },
@@ -1754,6 +1912,9 @@ const NEWS_FEEDS = [
   { id: 'dw',        name: 'DW',        url: 'https://rss.dw.com/rdf/rss-en-world',                   color: '#2E7BD6' },
   { id: 'guardian',  name: 'GUARDIAN',  url: 'https://www.theguardian.com/world/rss',                 color: '#2EC4B6' },
   { id: 'hn',        name: 'HACKER NEWS', url: 'https://hnrss.org/frontpage',                          color: '#F5A623' },
+  { id: 'waronrocks', name: 'WAR ON ROCKS', url: 'https://warontherocks.com/feed/',                      color: '#E63946' },
+  { id: 'isis_study', name: 'ISIS STUDY',  url: 'https://isisonline.org/feed',                           color: '#9B59B6' },
+  { id: 'csis',       name: 'CSIS',         url: 'https://www.csis.org/rss.xml',                         color: '#D4A24C' },
 ];
 
 let cachedNews = [], newsTs = 0;
@@ -1904,6 +2065,8 @@ function computeScales(input) {
     { ...SCALE_MAP.knowledge, index: clamp((input.wikiRate - 1) / 14, 0, 1) * 100, value: input.wikiRate, unit: 'Гц', sub: 'wiki', status: input.wikiRate > 12 ? 'active' : 'stable' },
     { ...SCALE_MAP.info,      index: clamp(40 + (input.seCount + input.hnCount) / 6, 10, 100), value: input.hnCount + input.seCount, unit: 'постів', sub: `${input.hnCount} HN`, status: 'stable' },
     { ...SCALE_MAP.ai,        index: clamp((input.ghEvents / 300) * 100, 5, 100), value: input.ghEvents, unit: 'подій', sub: `${input.ghReleases} релізів`, status: input.ghEvents > 250 ? 'active' : 'stable' },
+    { ...SCALE_MAP.conflicts, index: clamp(100 - (input.conflicts.activeConflicts * 3 + input.conflicts.fatalities * 0.1 + (input.conflicts.intensity === 'high' ? 20 : input.conflicts.intensity === 'medium' ? 10 : 0)), 0, 100), value: input.conflicts.activeConflicts, unit: 'конфліктів', sub: `${input.conflicts.fatalities} жертв`, status: input.conflicts.intensity === 'high' ? 'critical' : input.conflicts.intensity === 'medium' ? 'stressed' : input.conflicts.activeConflicts > 5 ? 'active' : 'stable' },
+    { ...SCALE_MAP.geopolitics, index: clamp(100 - input.geoStress.score, 0, 100), value: input.geoStress.score, unit: 'GS', sub: `ядер: ${input.geoStress.nukeRisk}`, status: input.geoStress.score > 70 ? 'critical' : input.geoStress.score > 50 ? 'stressed' : input.geoStress.score > 30 ? 'active' : 'stable' },
   ];
   // Зберегти в історію (для пошуку зв'язків)
   scales.forEach(s => {
@@ -1963,6 +2126,9 @@ function detectAnomalies(input) {
   if (input.wikiRate > 20) a.push({ title: 'Вікі-аномалія', desc: `${input.wikiRate.toFixed(1)} ред/сек — сплеск пізнавальної активності`, sev: 'warn', color: '#2E7BD6' });
   if (input.btc && Math.abs(input.btc.change24h) > 5) a.push({ title: 'Волатильність ринку', desc: `BTC ${input.btc.change24h >= 0 ? '+' : ''}${input.btc.change24h.toFixed(1)}%`, sev: 'warn', color: '#D4A24C' });
   if (input.eonet.length > 30) a.push({ title: 'Екологічна напруга', desc: `${input.eonet.length} активних катастроф`, sev: 'warn', color: '#D4A24C' });
+  if (input.conflicts && input.conflicts.intensity === 'high') a.push({ title: 'Високий конфліктний стрес', desc: `${input.conflicts.activeConflicts} активних конфліктів, ${input.conflicts.fatalities} жертв`, sev: 'critical', color: '#E63946' });
+  if (input.geoStress && input.geoStress.nukeRisk === 'high') a.push({ title: 'Ядерний ризик', desc: `Геополітичний стрес ${input.geoStress.score.toFixed(0)} · ${input.geoStress.sanctions} санкційних новин`, sev: 'critical', color: '#9B59B6' });
+  if (input.geoStress && input.geoStress.score > 65) a.push({ title: 'Геополітична напруга', desc: `Стрес-індекс: ${input.geoStress.score.toFixed(0)}/100`, sev: 'warn', color: '#9B59B6' });
   return a;
 }
 
@@ -2082,6 +2248,16 @@ function answer(q) {
     return;
   }
 
+  if (q.match(/конфлікт|війн|бойов|attack|conflict|war|жертв|біг|acled|ucdp|gdelt/)) {
+    reportCategory('conflicts');
+    return;
+  }
+
+  if (q.match(/геополіт|geopolit|санкц|ядерн|nuclear|nato|дипломат|алянс|торгів|sanction|стрес гео/)) {
+    reportCategory('geopolitics');
+    return;
+  }
+
   if (q.match(/прогноз|майбут|тренд/)) {
     reportForecast();
     return;
@@ -2160,6 +2336,8 @@ function answer(q) {
     `<em>• "що відбувається" — звіт по всій системі<br>` +
     `• "аномалії" — виявлені відхилення<br>` +
     `• "зв'язки" — кореляції між шкалами<br>` +
+    `• "конфлікти" — світові конфлікти та бойові дії<br>` +
+    `• "геополітика" — геополітичний стрес, ядерний ризик, санкції<br>` +
     `• "населення" — демографія<br>` +
     `• "космос" — сонячна погода<br>` +
     `• "землетруси" — сейсміка<br>` +
@@ -2453,6 +2631,101 @@ function reportCategory(scaleId) {
     if (input.ghEvents > 250) html += `<em>•</em> Висока інтенсивність розробки<br>`;
     else html += `<em>•</em> Помірна інтенсивність<br>`;
     html += `<br><span class="src">Джерело: GitHub Events API · публічна активність</span>`;
+  } else if (scaleId === 'conflicts') {
+    html += `<br><strong>КОНФЛІКТИ · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    const c = input.conflicts;
+    html += `<strong>Глобальна картина конфліктів:</strong><br>`;
+    html += `Активних конфліктів: <span class="num">${c.activeConflicts}</span><br>`;
+    html += `Жертв (останні події): <span class="num">${c.fatalities}</span><br>`;
+    const intColor = c.intensity === 'high' ? 'var(--crimson)' : c.intensity === 'medium' ? 'var(--amber)' : 'var(--teal)';
+    html += `Інтенсивність: <em style="color: ${intColor};">${c.intensity === 'high' ? 'ВИСОКА' : c.intensity === 'medium' ? 'СЕРЕДНЯ' : 'НИЗЬКА'}</em><br>`;
+    if (c.fallback) html += `<em style="color: var(--amber);">⚠ Fallback-режим: API недоступне, використовуються оцінки</em><br>`;
+    html += `<br><strong>Гарячі точки (ACLED):</strong><br>`;
+    if (c.acledEvents && c.acledEvents.length > 0) {
+      const byCountry = {};
+      c.acledEvents.forEach(e => {
+        if (!byCountry[e.country]) byCountry[e.country] = { count: 0, fatalities: 0, types: new Set() };
+        byCountry[e.country].count++;
+        byCountry[e.country].fatalities += e.fatalities;
+        byCountry[e.type] && byCountry[e.country].types.add(e.type);
+      });
+      Object.entries(byCountry).sort((a, b) => b[1].fatalities - a[1].fatalities).slice(0, 8).forEach(([country, data]) => {
+        const cColor = data.fatalities > 50 ? 'var(--crimson)' : data.fatalities > 10 ? 'var(--amber)' : 'var(--soft-white-dim)';
+        html += `<em>•</em> <strong style="color: ${cColor};">${country}</strong>: ${data.count} подій, ${data.fatalities} жертв<br>`;
+      });
+    } else {
+      html += `<em>Дані ACLED завантажуються...</em><br>`;
+    }
+    html += `<br><strong>GDELT — конфліктний потік (останні 15 хв):</strong><br>`;
+    if (c.gdeltEvents && c.gdeltEvents.length > 0) {
+      html += `Конфліктних статей: <span class="num">${c.gdeltEvents.length}</span><br>`;
+      html += `Середній тон: <span class="num">${c.gdeltTone.toFixed(2)}</span> ${c.gdeltTone < -3 ? '<em style="color: var(--crimson);">⚠ різко негативний</em>' : c.gdeltTone < -1 ? '<em style="color: var(--amber);">негативний</em>' : '<em style="color: var(--teal);">помірний</em>'}<br>`;
+      c.gdeltEvents.slice(0, 5).forEach((ev, i) => {
+        const toneColor = ev.tone < -3 ? 'var(--crimson)' : ev.tone < -1 ? 'var(--amber)' : 'var(--soft-white-dim)';
+        html += `<em>${i + 1}.</em> <strong>${ev.title.slice(0, 65)}</strong> <span style="color: ${toneColor};">(${ev.tone.toFixed(1)})</span><br>`;
+      });
+      if (c.gdeltThemes && c.gdeltThemes.length > 0) {
+        html += `<br><strong>Домінантні теми:</strong><br>`;
+        c.gdeltThemes.forEach(t => { html += `<em>•</em> ${t.theme}: <span class="num">${t.count}</span><br>`; });
+      }
+    } else {
+      html += `<em>GDELT дані завантажуються...</em><br>`;
+    }
+    html += `<br><strong>UCDP — активні війни:</strong><br>`;
+    if (c.ucdpCountries && c.ucdpCountries.length > 0) {
+      html += `Активних воєн: <span class="num">${c.ucdpWars || '—'}</span><br>`;
+      html += `Країни: ${c.ucdpCountries.join(', ')}<br>`;
+    } else {
+      html += `<em>Дані UCDP завантажуються...</em><br>`;
+    }
+    html += `<br><strong>Метафора організму:</strong><br>`;
+    html += `<em>•</em> Конфлікти = імунітет цивілізації<br>`;
+    html += `<em>•</em> Війна = аутоімунне захворювання — організм атакує сам себе<br>`;
+    html += `<em>•</em> Дипломатія = лікування, профілактика<br>`;
+    html += `<em>•</em> Кожна жертва — втрата клітини цивілізації<br>`;
+    html += `<br><span class="src">Джерела: GDELT · ACLED · UCDP Uppsala · оновлення 2-5 хв</span>`;
+  } else if (scaleId === 'geopolitics') {
+    html += `<br><strong>ГЕОПОЛІТИКА · ПОВНИЙ ЗВІТ</strong><br><br>`;
+    const g = input.geoStress;
+    html += `<strong>Геополітичний стрес-індекс:</strong><br>`;
+    html += `GS: <span class="num">${g.score.toFixed(0)}</span>/100 `;
+    const gsColor = g.score > 70 ? 'var(--crimson)' : g.score > 50 ? 'var(--amber)' : 'var(--teal)';
+    html += `<em style="color: ${gsColor};">${g.score > 70 ? 'КРИТИЧНИЙ' : g.score > 50 ? 'ПІДВИЩЕНИЙ' : g.score > 30 ? 'ПОМІРНИЙ' : 'НИЗЬКИЙ'}</em><br>`;
+    html += `<br><strong>Фактори стресу:</strong><br>`;
+    html += `<em>•</em> Ядерний ризик: <em style="color: ${g.nukeRisk === 'high' ? 'var(--crimson)' : g.nukeRisk === 'medium' ? 'var(--amber)' : 'var(--teal)'};">${g.nukeRisk === 'high' ? 'ВИСОКИЙ' : g.nukeRisk === 'medium' ? 'СЕРЕДНІЙ' : 'НИЗЬКИЙ'}</em><br>`;
+    html += `<em>•</em> Санкційні новини: <span class="num">${g.sanctions}</span><br>`;
+    html += `<em>•</em> Торгові війни: <span class="num">${g.tradeWars}</span><br>`;
+    html += `<em>•</em> Альянс-активність: <span class="num">${g.alliances}</span><br>`;
+    if (g.tone !== undefined) {
+      html += `<em>•</em> Тональність геопол. новин: <span class="num">${g.tone.toFixed(2)}</span><br>`;
+    }
+    html += `<br><strong>Геополітична матриця ризиків:</strong><br>`;
+    html += `<em>•</em> Ядерне протистояння: ${g.nukeRisk === 'high' ? '<em style="color: var(--crimson);">АКТИВНЕ</em>' : '<em style="color: var(--teal);">стабільне</em>'}<br>`;
+    html += `<em>•</em> Економічні санкції: ${g.sanctions > 2 ? '<em style="color: var(--amber);">ЕСКАЛАЦІЯ</em>' : '<em style="color: var(--teal);">помірні</em>'}<br>`;
+    html += `<em>•</em> Торгові суперечки: ${g.tradeWars > 1 ? '<em style="color: var(--amber);">НАПРУЖЕНІ</em>' : '<em style="color: var(--teal);">спокійні</em>'}<br>`;
+    html += `<em>•</em> Військові альянси: ${g.alliances > 2 ? '<em style="color: var(--deep-blue-soft);">АКТИВНІ</em>' : '<em style="color: var(--soft-white-faint);">стабільні</em>'}<br>`;
+    html += `<br><strong>Активні конфлікти (кореляція):</strong><br>`;
+    if (input.conflicts && input.conflicts.ucdpCountries) {
+      input.conflicts.ucdpCountries.slice(0, 6).forEach(c => {
+        html += `<em>•</em> ${c}<br>`;
+      });
+    }
+    html += `<br><strong>Геополітичні новини (GDELT, остання година):</strong><br>`;
+    if (g.articles && g.articles.length > 0) {
+      g.articles.slice(0, 5).forEach((a, i) => {
+        const toneColor = (parseFloat(a.seentone) || 0) < -2 ? 'var(--crimson)' : 'var(--soft-white-dim)';
+        html += `<em>${i + 1}.</em> <strong>${(a.title || '').slice(0, 65)}</strong> <span style="color: ${toneColor};">(${(parseFloat(a.seentone) || 0).toFixed(1)})</span><br>`;
+      });
+    } else {
+      html += `<em>Завантажуються...</em><br>`;
+    }
+    html += `<br><strong>Метафора організму:</strong><br>`;
+    html += `<em>•</em> Геополітика = рефлекси цивілізації<br>`;
+    html += `<em>•</em> Санкції = імунна відповідь (атака на чужорідне)<br>`;
+    html += `<em>•</em> Ядерний ризик = анафілактичний шок — загроза всьому організму<br>`;
+    html += `<em>•</em> Дипломатія = нейромедіатори — гальмують стрес<br>`;
+    html += `<em>•</em> Когерентність геопол. = злагодженість рефлексів<br>`;
+    html += `<br><span class="src">Джерела: GDELT Global Knowledge Graph · ACLED · UCDP · оновлення 3-5 хв</span>`;
   }
 
   // ── ЗВ'ЯЗКИ ──────────────────────────────────────────────────────
@@ -2865,11 +3138,11 @@ function renderHeader() {
   const d = new Date();
   $('stat-utc').textContent = d.toISOString().slice(11, 19);
   $('stat-obs').textContent = STATE.observations.toLocaleString('en-US');
-  $('stat-src').textContent = STATE.sourcesOnline + '/14';
+  $('stat-src').textContent = STATE.sourcesOnline + '/24';
 }
 
 // ─── АГЕНТ — ініціатива (сам пише) ─────────────────────────────────────────
-let lastInput = { quakes: [], eonet: [], kp: 2, flares: 0, btc: null, bigQuakes: 0, ghEvents: 0, ghReleases: 0, hnCount: 0, seCount: 0, osm: 0, flights: 0, population: 0, birthsToday: 0, deathsToday: 0, wikiRate: 0 };
+let lastInput = { quakes: [], eonet: [], kp: 2, flares: 0, btc: null, bigQuakes: 0, ghEvents: 0, ghReleases: 0, hnCount: 0, seCount: 0, osm: 0, flights: 0, population: 0, birthsToday: 0, deathsToday: 0, wikiRate: 0, conflicts: { activeConflicts: 0, fatalities: 0, intensity: 'low', fallback: false, acledEvents: [], gdeltEvents: [], gdeltTone: 0, gdeltThemes: [], ucdpCountries: [], ucdpWars: 0 }, geoStress: { score: 45, sanctions: 0, nukeRisk: 'low', tradeWars: 0, alliances: 0, tone: 0, articles: [] } };
 
 async function refresh() {
   // ─── ЛОГ ПАРСЕРІВ — що агент робить прямо зараз ────────────────────
@@ -2885,16 +3158,21 @@ async function refresh() {
     { src: 'OPENSTREETMAP', status: 'fetching', ts: now() },
     { src: 'STACK EXCHANGE', status: 'fetching', ts: now() },
     { src: 'COINGECKO', status: 'fetching', ts: now() },
-    { src: 'RSS НОВИНИ (6)', status: 'fetching', ts: now() },
+    { src: 'RSS НОВИНИ (9)', status: 'fetching', ts: now() },
+    { src: 'GDELT', status: 'fetching', ts: now() },
+    { src: 'ACLED', status: 'fetching', ts: now() },
+    { src: 'UCDP', status: 'fetching', ts: now() },
+    { src: 'ГЕОСТРЕС', status: 'fetching', ts: now() },
   ];
   pushLog(logEntries);
   renderLog();
 
   const t0 = performance.now();
-  const [world, quakesRaw, eonetRaw, sw, gh, hn, flights, osm, se, btc, lab, news] = await Promise.all([
+  const [world, quakesRaw, eonetRaw, sw, gh, hn, flights, osm, se, btc, lab, news, gdelt, acled, ucdp, geoStress] = await Promise.all([
     fetchWorld(), fetchQuakes(), fetchEonet(), fetchSpaceWx(),
     fetchGithub(), fetchHn(), fetchFlights(), fetchOsm(), fetchSe(), fetchBtc(),
     fetchLabProjects(), fetchNews(),
+    fetchGdelt(), fetchAcled(), fetchUcdp(), fetchGeoStress(),
   ]);
   const elapsed = (performance.now() - t0).toFixed(0);
 
@@ -2913,6 +3191,10 @@ async function refresh() {
     { src: 'COINGECKO', status: btc.price > 0 ? 'ok' : 'blocked', val: btc.price > 0 ? '$' + btc.price.toLocaleString('en-US') : '—', detail: btc.price > 0 ? (btc.change24h >= 0 ? '+' : '') + btc.change24h.toFixed(1) + '%' : 'CORS', ts: now() },
     { src: 'ЛАБОРАТОРІЯ', status: 'ok', val: Object.values(lab).filter(p => p.status === 'online').length + '/5 онлайн', detail: Object.values(lab).filter(p => p.type === 'repo' && p.commits).reduce((a, p) => a + p.commits, 0) + ' коммітів', ts: now() },
     { src: 'RSS НОВИНИ', status: news.length > 0 ? 'ok' : 'blocked', val: news.length + ' статей', detail: news.length ? news[0].source + ': ' + news[0].title.slice(0, 35) : 'CORS', ts: now() },
+    { src: 'GDELT', status: gdelt.conflictCount > 0 ? 'ok' : 'pending', val: gdelt.conflictCount + ' конфліктів', detail: 'тон: ' + gdelt.tone.toFixed(2), ts: now() },
+    { src: 'ACLED', status: acled.activeConflicts > 0 ? 'ok' : 'pending', val: acled.activeConflicts + ' конфліктів', detail: acled.fatalities + ' жертв', ts: now() },
+    { src: 'UCDP', status: ucdp.activeWars > 0 ? 'ok' : 'pending', val: ucdp.activeWars + ' воєн', detail: ucdp.intensity + ' інтенсивність', ts: now() },
+    { src: 'ГЕОСТРЕС', status: 'ok', val: geoStress.score.toFixed(0) + '/100', detail: 'ядер: ' + geoStress.nukeRisk, ts: now() },
   ]);
   renderLog();
 
@@ -2924,6 +3206,8 @@ async function refresh() {
     hnCount: hn.count, seCount: se.count, osmCount: osm, flights,
     quakes: quakesRaw, bigQuakes, eonet: eonetRaw, kp: sw.kp, flares: sw.flares, btc,
     lab,
+    conflicts: { activeConflicts: acled.activeConflicts || ucdp.activeWars, fatalities: acled.fatalities, intensity: ucdp.intensity, fallback: ucdp.fallback, acledEvents: acled.events, gdeltEvents: gdelt.events, gdeltTone: gdelt.tone, gdeltThemes: gdelt.themes, ucdpCountries: ucdp.countries, ucdpWars: ucdp.activeWars },
+    geoStress: { score: geoStress.score, sanctions: geoStress.sanctions, nukeRisk: geoStress.nukeRisk, tradeWars: geoStress.tradeWars, alliances: geoStress.alliances, tone: geoStress.tone, articles: geoStress.articleCount ? (cachedGeoStress._articles || []) : [] },
   };
   lastInput = input;
   const scales = computeScales(input);
@@ -2962,6 +3246,28 @@ async function refresh() {
     changes.push({ type: 'market', text: `<strong>Ринок рухається</strong> — BTC ${btc.change24h >= 0 ? '+' : ''}${btc.change24h.toFixed(1)}% (було ${STATE.prevBtc.change24h >= 0 ? '+' : ''}${STATE.prevBtc.change24h.toFixed(1)}%).` });
   }
   STATE.prevBtc = btc;
+  // Нові конфліктні події
+  if (STATE.prevConflicts !== undefined) {
+    const prevC = STATE.prevConflicts;
+    const newC = acled.activeConflicts || ucdp.activeWars;
+    if (newC > prevC) {
+      changes.push({ type: 'conflict', text: `<strong>Нова конфліктна подія</strong> — активних конфліктів: ${newC}. ${acled.fatalities > 0 ? acled.fatalities + ' жертв.' : ''}` });
+    }
+    if (ucdp.intensity === 'high' && prevC.intensity !== 'high') {
+      changes.push({ type: 'conflict', text: `<strong>Конфліктна інтенсивність зросла</strong> — висока активність бойових дій.` });
+    }
+  }
+  STATE.prevConflicts = { activeConflicts: acled.activeConflicts || ucdp.activeWars, intensity: ucdp.intensity };
+  // Геополітичний стрес
+  if (STATE.prevGeoStress !== undefined) {
+    if (geoStress.score > STATE.prevGeoStress + 15) {
+      changes.push({ type: 'geopolitics', text: `<strong>Геополітичний стрес зріс</strong> — ${geoStress.score.toFixed(0)}/100. ${geoStress.nukeRisk === 'high' ? '<em>Ядерний ризик: високий!</em>' : ''}` });
+    }
+    if (geoStress.nukeRisk === 'high' && STATE.prevGeoStress.nukeRisk !== 'high') {
+      changes.push({ type: 'geopolitics', text: `<strong>Ядерний ризик підвищився</strong> — GDELT фіксує зростання ядерної риторики.` });
+    }
+  }
+  STATE.prevGeoStress = { score: geoStress.score, nukeRisk: geoStress.nukeRisk };
   // Нові релізи в проєктах лабораторії
   if (STATE.prevLabReleases) {
     Object.values(lab).forEach(p => {
@@ -3008,8 +3314,8 @@ async function refresh() {
   STATE.wikiRate = wr;
   STATE.labProjects = lab;
   STATE.news = news;
-  STATE.sourcesOnline = 20;  // 14 OSINT + 5 лаб + RSS новини
-  STATE.observations += 20;
+  STATE.sourcesOnline = 24;  // 14 OSINT + 5 лаб + 9 RSS новин + 4 конфлікти/геополітика
+  STATE.observations += 24;
   STATE.lastRefresh = now();
 
   // ─── ЗБЕРЕЖЕННЯ В PERSISTENT MEMORY ────────────────────────────────
@@ -3062,8 +3368,8 @@ async function refresh() {
   // ─── АГЕНТ САМ ПИШЕ ПРО ЗМІНИ ──────────────────────────────────────
   changes.forEach((ch, i) => {
     setTimeout(() => {
-      const type = ch.type === 'quake' || ch.type === 'solar' ? 'alert' : ch.type === 'lab' || ch.type === 'release' || ch.type === 'phase' ? 'discovery' : 'bot';
-      const tag = { phase: 'ФАЗА', quake: 'АЛЕРТ', solar: 'АЛЕРТ', wiki: 'ЗНАХІДКА', release: 'РЕЛІЗ', market: 'РИНОК', lab: 'ЛАБ', stress: 'ТРЕНД', news: 'НОВИНА' }[ch.type] || 'ЗВІТ';
+      const type = ch.type === 'quake' || ch.type === 'solar' || ch.type === 'conflict' ? 'alert' : ch.type === 'lab' || ch.type === 'release' || ch.type === 'phase' || ch.type === 'geopolitics' ? 'discovery' : 'bot';
+      const tag = { phase: 'ФАЗА', quake: 'АЛЕРТ', solar: 'АЛЕРТ', wiki: 'ЗНАХІДКА', release: 'РЕЛІЗ', market: 'РИНОК', lab: 'ЛАБ', stress: 'ТРЕНД', news: 'НОВИНА', conflict: 'КОНФЛІКТ', geopolitics: 'ГЕОПОЛ' }[ch.type] || 'ЗВІТ';
       agentMessage(ch.text, type, tag);
     }, i * 800);
   });
@@ -3127,6 +3433,11 @@ async function refresh() {
       newEvents.push({ ts: now(), type: 'ЛАБ', title: `${p.name} · ${p.lastReleaseTag}`, meta: p.lastReleaseDate, color: p.accent });
     }
   });
+  // Конфліктні події
+  if (gdelt.conflictCount > 0) newEvents.push({ ts: now(), type: 'КОНФЛІКТ', title: `${gdelt.conflictCount} конфліктних статей`, meta: `GDELT · тон: ${gdelt.tone.toFixed(1)}`, color: '#E63946' });
+  if (acled.activeConflicts > 0) newEvents.push({ ts: now(), type: 'БОЙОВІ', title: `${acled.activeConflicts} конфліктів · ${acled.fatalities} жертв`, meta: 'ACLED', color: '#E63946' });
+  if (geoStress.nukeRisk === 'high') newEvents.push({ ts: now(), type: 'ЯДЕРНИЙ', title: `Ядерний ризик: ВИСОКИЙ`, meta: `GS: ${geoStress.score.toFixed(0)}/100`, color: '#9B59B6' });
+  else if (geoStress.score > 55) newEvents.push({ ts: now(), type: 'ГЕОПОЛ', title: `Стрес: ${geoStress.score.toFixed(0)}/100`, meta: `санкції: ${geoStress.sanctions} · ядер: ${geoStress.nukeRisk}`, color: '#9B59B6' });
   if (newEvents.length) {
     STATE.events.unshift(...newEvents);
     if (STATE.events.length > 60) STATE.events.length = 60;
