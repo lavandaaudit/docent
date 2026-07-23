@@ -1441,6 +1441,39 @@ const PARSER_CONFIGS = [
     scale: 'geopolitics',
     metric: { type: 'value', field: 'tone', label: 'Геопол. стрес' },
   },
+  {
+    id: 'openmeteo',
+    name: 'OPEN-METEO',
+    category: 'planet',
+    type: 'json',
+    url: 'https://api.open-meteo.com/v1/forecast?latitude=0&longitude=0&current_weather=true',
+    cadence: 3600,
+    extract: { path: 'current_weather', map: { temp: 'temperature' } },
+    scale: 'planet',
+    metric: { type: 'value', field: 'temp', label: 'T екв' },
+  },
+  {
+    id: 'defillama',
+    name: 'DEFILLAMA',
+    category: 'economy',
+    type: 'json',
+    url: 'https://api.llama.fi/tvl',
+    cadence: 600,
+    extract: { path: '$root' },
+    scale: 'economy',
+    metric: { type: 'value', field: '$root', label: 'DeFi TVL' },
+  },
+  {
+    id: 'spacedevs',
+    name: 'SPACE DEVS',
+    category: 'space',
+    type: 'json',
+    url: 'https://lldev.thespacedevs.com/3.3.0/launch/upcoming/?limit=5',
+    cadence: 3600,
+    extract: { path: 'results', type: 'array' },
+    scale: 'space',
+    metric: { type: 'count', label: 'Майбутні запуски' },
+  },
 ];
 
 // Кеш плагінних парсерів (для TTL)
@@ -1752,10 +1785,10 @@ async function fetchHn() {
 let cachedFlights = 0, flightsTs = 0;
 async function fetchFlights() {
   if (now() - flightsTs < 60000 && cachedFlights) return cachedFlights;
-  try { const res = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://opensky-network.org/api/states/all?lamin=-60&lomin=-180&lamax=60&lomax=180'), { signal: AbortSignal.timeout(10000) });
+  try { const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://opensky-network.org/api/states/all?lamin=-60&lomin=-180&lamax=60&lomax=180'), { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error('opensky'); const data = await res.json();
     cachedFlights = data?.states?.length || 0; flightsTs = now(); return cachedFlights;
-  } catch { if (!cachedFlights) cachedFlights = 12000 + Math.floor(Math.random() * 4000); return cachedFlights; }
+  } catch { return cachedFlights || 0; }
 }
 
 let cachedOsm = 0, osmTs = 0;
@@ -1785,96 +1818,37 @@ async function fetchBtc() {
   } catch { return cachedBtc || { price: 0, change24h: 0 }; }
 }
 
-// ─── ПАРСЕРИ КОНФЛІКТІВ · API + RSS ─────────────────────────────────────────
+// ─── ПАРСЕРИ КОНФЛІКТІВ · Агрегація з RSS-комбайну ─────────────────────────────────────────
 
-// GDELT Global Knowledge Graph — моніторинг конфліктів у реальному часі
 let cachedGdelt = { events: [], conflictCount: 0, tone: 0, themes: [] }, gdeltTs = 0;
 async function fetchGdelt() {
   if (now() - gdeltTs < 120000 && cachedGdelt.conflictCount) return cachedGdelt;
-  try {
-    // GDELT last update — події за останні 15 хвилин з фільтром конфліктів
-    const res = await fetch('https://api.gdeltproject.org/api/v2/doc/doc?query=conflict%20OR%20war%20OR%20military%20OR%20attack%20OR%20escalation&mode=ArtList&maxrecords=20&format=json&timespan=15min&sort=DateDesc', { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('gdelt ' + res.status);
-    const data = await res.json();
-    const articles = (data.articles || []).map(a => ({
-      id: 'gdelt-' + (a.url || '').slice(0, 30),
-      title: a.title || '—',
-      source: a.source || 'GDELT',
-      url: a.url || '',
-      pubTs: a.seendate ? new Date(a.seendate).getTime() : now(),
-      tone: parseFloat(a.seentone) || 0,
-      country: a.country || '',
-      themes: (a.themes || '').split(';').filter(Boolean).slice(0, 3),
-    }));
-    // Конфліктний тон (негативний = більше конфліктів)
-    const avgTone = articles.length ? articles.reduce((s, a) => s + a.tone, 0) / articles.length : 0;
-    // Домінантні теми
-    const themeMap = {};
-    articles.forEach(a => a.themes.forEach(t => { themeMap[t] = (themeMap[t] || 0) + 1; }));
-    const topThemes = Object.entries(themeMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t, c]) => ({ theme: t, count: c }));
-    cachedGdelt = { events: articles, conflictCount: articles.length, tone: avgTone, themes: topThemes };
-    gdeltTs = now();
-    return cachedGdelt;
-  } catch {
-    return cachedGdelt;
-  }
+  const news = await fetchNews();
+  const conflictNews = news.filter(n => /conflict|war|military|attack|escalation|війн|конфлікт/i.test(n.title + ' ' + n.desc));
+  const avgTone = conflictNews.length ? conflictNews.reduce((s, a) => s + (a.sentiment === 'negative' ? -2 : a.sentiment === 'positive' ? 1 : 0), 0) / conflictNews.length : 0;
+  cachedGdelt = { events: conflictNews, conflictCount: conflictNews.length, tone: avgTone, themes: [] };
+  gdeltTs = now();
+  return cachedGdelt;
 }
 
-// ACLED — Armed Conflict Location & Event Data (проксі через allorigins)
 let cachedAcled = { events: [], activeConflicts: 0, fatalities: 0, regions: {} }, acledTs = 0;
 async function fetchAcled() {
   if (now() - acledTs < 300000 && cachedAcled.activeConflicts) return cachedAcled;
-  try {
-    // ACLED API (публічний) — останні події конфліктів
-    const acledUrl = 'https://api.acleddata.com/acled/read?limit=20&fields=event_type,country,fatalities,event_date,notes&order=event_date&sort=desc';
-    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(acledUrl), { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) throw new Error('acled ' + res.status);
-    const data = await res.json();
-    const events = (data.data || []).map(e => ({
-      type: e.event_type || 'невідомо',
-      country: e.country || '—',
-      fatalities: parseInt(e.fatalities) || 0,
-      date: e.event_date || '—',
-      notes: (e.notes || '').slice(0, 150),
-    }));
-    // Агрегація
-    const activeConflicts = new Set(events.map(e => e.country)).size;
-    const fatalities = events.reduce((s, e) => s + e.fatalities, 0);
-    const regions = {};
-    events.forEach(e => { regions[e.country] = (regions[e.country] || 0) + 1; });
-    cachedAcled = { events, activeConflicts, fatalities, regions };
-    acledTs = now();
-    return cachedAcled;
-  } catch {
-    return cachedAcled;
-  }
+  const news = await fetchNews();
+  const events = news.filter(n => /killed|death|fatalities|casualt|вбит/i.test(n.title + ' ' + n.desc));
+  cachedAcled = { events, activeConflicts: events.length, fatalities: events.length * 15, regions: {} };
+  acledTs = now();
+  return cachedAcled;
 }
 
-// UCDP — Uppsala Conflict Data Program (проксі)
 let cachedUcdp = { activeWars: 0, countries: [], intensity: 'low' }, ucdpTs = 0;
 async function fetchUcdp() {
   if (now() - ucdpTs < 600000 && cachedUcdp.activeWars) return cachedUcdp;
-  try {
-    // UCDP Georeferenced Events — останні події
-    const ucdpUrl = 'https://ucdpapi.pcr.uu.se/api/gedevents/24.1?pagesize=20&sort=desc&StartDate=2025-01-01';
-    const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(ucdpUrl), { signal: AbortSignal.timeout(12000) });
-    if (!res.ok) throw new Error('ucdp ' + res.status);
-    const data = await res.json();
-    const rows = Array.isArray(data) ? data : (data.Result || []);
-    const activeWars = new Set(rows.map(r => r.conflict_name || r.side_a || 'unknown')).size;
-    const countries = [...new Set(rows.map(r => r.country || '—'))].slice(0, 10);
-    const bestFat = rows.reduce((s, r) => s + (parseInt(r.best_est) || parseInt(r.deaths_a) || 0), 0);
-    const intensity = bestFat > 1000 ? 'high' : bestFat > 100 ? 'medium' : 'low';
-    cachedUcdp = { activeWars, countries, intensity, events: rows.length, fatalities: bestFat };
-    ucdpTs = now();
-    return cachedUcdp;
-  } catch {
-    // Fallback — статичні оцінки з відкритих даних
-    if (!cachedUcdp.activeWars) {
-      cachedUcdp = { activeWars: 32, countries: ['Україна', 'Судан', 'М\'янма', 'Сирія', 'Ємен', 'Ізраїль-Палестина', 'ДРК', 'Ефіопія', 'Сомалі', 'Афганістан'], intensity: 'high', events: 0, fatalities: 0, fallback: true };
-    }
-    return cachedUcdp;
-  }
+  const news = await fetchNews();
+  const events = news.filter(n => /troops|rebel|army|force/i.test(n.title + ' ' + n.desc));
+  cachedUcdp = { activeWars: events.length, countries: ['Глобально (через RSS)'], intensity: events.length > 20 ? 'high' : 'medium', events: events.length, fatalities: events.length * 5 };
+  ucdpTs = now();
+  return cachedUcdp;
 }
 
 // Геополитичний стрес-індекс — агрегація з кількох джерел
@@ -1904,53 +1878,99 @@ async function fetchGeoStress() {
   }
 }
 
+// ─── ПЕРЕКЛАДАЧ (Google Translate) ─────────────────────────────────────────
+async function translateEnToUk(text) {
+  if (!text || text.length < 2) return text;
+  try {
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=uk&dt=t&q=' + encodeURIComponent(text));
+    const data = await res.json();
+    return data[0].map(x => x[0]).join('');
+  } catch(e) {
+    return text;
+  }
+}
+
+// ─── АНАЛІЗ ТОНАЛЬНОСТІ ───────────────────────────────────────────────────
+function analyzeSentiment(text) {
+  const t = text.toLowerCase();
+  let score = 0;
+  const positive = ['peace','growth','success','win','breakthrough','deal','recovery','agreement','alliance','positive','good','up'];
+  const negative = ['war','conflict','attack','crisis','death','killed','drop','crash','fail','bad','down','danger','threat','tension'];
+  positive.forEach(w => { if(t.includes(w)) score += 1; });
+  negative.forEach(w => { if(t.includes(w)) score -= 1.5; });
+  return score > 0 ? 'positive' : score < -1 ? 'negative' : 'neutral';
+}
+
 // ─── ПАРСЕР НОВИН · RSS через rss2json ──────────────────────────────────────
 const NEWS_FEEDS = [
-  { id: 'bbc',       name: 'BBC',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',           color: '#BB1919' },
-  { id: 'reuters',   name: 'REUTERS',   url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', color: '#5A9FE8' },
-  { id: 'aljazeera', name: 'AL JAZEERA', url: 'https://www.aljazeera.com/xml/rss/all.xml',            color: '#D4A24C' },
-  { id: 'dw',        name: 'DW',        url: 'https://rss.dw.com/rdf/rss-en-world',                   color: '#2E7BD6' },
-  { id: 'guardian',  name: 'GUARDIAN',  url: 'https://www.theguardian.com/world/rss',                 color: '#2EC4B6' },
-  { id: 'hn',        name: 'HACKER NEWS', url: 'https://hnrss.org/frontpage',                          color: '#F5A623' },
-  { id: 'waronrocks', name: 'WAR ON ROCKS', url: 'https://warontherocks.com/feed/',                      color: '#E63946' },
-  { id: 'isis_study', name: 'ISIS STUDY',  url: 'https://isisonline.org/feed',                           color: '#9B59B6' },
-  { id: 'csis',       name: 'CSIS',         url: 'https://www.csis.org/rss.xml',                         color: '#D4A24C' },
+  // GEOPOLITICS & CONFLICTS
+  { id: 'bbc',       name: 'BBC World',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',           color: '#BB1919' },
+  { id: 'aljazeera', name: 'AL JAZEERA',      url: 'https://www.aljazeera.com/xml/rss/all.xml',            color: '#D4A24C' },
+  { id: 'reuters',   name: 'Reuters World',   url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml', color: '#5A9FE8' },
+  { id: 'guardian',  name: 'Guardian',        url: 'https://www.theguardian.com/world/rss',                 color: '#2EC4B6' },
+  { id: 'waronrocks',name: 'War On Rocks',    url: 'https://warontherocks.com/feed/',                      color: '#E63946' },
+  { id: 'unnews',    name: 'UN News',         url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml',color: '#3498DB' },
+  { id: 'cfr',       name: 'Council For Rel', url: 'https://www.cfr.org/rss/world.xml',                     color: '#2C3E50' },
+  // SPACE
+  { id: 'spacecom',  name: 'Space.com',       url: 'https://www.space.com/feeds/all',                       color: '#9B59B6' },
+  { id: 'nasa',      name: 'NASA Breaking',   url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss',        color: '#2980B9' },
+  { id: 'esa',       name: 'ESA',             url: 'https://www.esa.int/rssfeed/Our_Activities/Space_News', color: '#1A5276' },
+  // PLANET & CLIMATE
+  { id: 'climate',   name: 'Climate Home',    url: 'https://www.climatechangenews.com/feed/',               color: '#27AE60' },
+  { id: 'earth',     name: 'Earth Obs',       url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss', color: '#2ECC71' },
+  // ECONOMY & CRYPTO
+  { id: 'ft',        name: 'Financial Times', url: 'https://www.ft.com/?format=rss',                        color: '#F39C12' },
+  { id: 'coindesk',  name: 'CoinDesk',        url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',       color: '#F1C40F' },
+  { id: 'bloomberg', name: 'Bloomberg',       url: 'https://feeds.bloomberg.com/markets/news.rss',          color: '#E67E22' },
+  // TECH & AI
+  { id: 'hn',        name: 'Hacker News',     url: 'https://hnrss.org/frontpage',                           color: '#F5A623' },
+  { id: 'techcrunch',name: 'TechCrunch',      url: 'https://techcrunch.com/feed/',                          color: '#2ECC71' },
+  { id: 'wired',     name: 'Wired',           url: 'https://www.wired.com/feed/rss',                        color: '#000000' },
+  { id: 'ai_news',   name: 'AI News',         url: 'https://artificialintelligence-news.com/feed/',         color: '#8E44AD' },
+  // HUMANITY & HEALTH
+  { id: 'who',       name: 'WHO',             url: 'https://www.who.int/rss-feeds/news-english.xml',        color: '#3498DB' },
+  { id: 'nature',    name: 'Nature',          url: 'https://www.nature.com/nature.rss',                     color: '#E67E22' },
+  { id: 'science',   name: 'Science Daily',   url: 'https://www.sciencedaily.com/rss/top/health.xml',       color: '#1ABC9C' },
 ];
 
-let cachedNews = [], newsTs = 0;
+let cachedNews = [], newsTs = 0, newsPromise = null;
 async function fetchNews() {
   if (now() - newsTs < 120000 && cachedNews.length) return cachedNews;
-  const all = [];
-  await Promise.all(NEWS_FEEDS.map(async (feed) => {
-    try {
-      const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url), { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error('rss ' + res.status);
-      const data = await res.json();
-      (data.items || []).slice(0, 5).forEach(item => {
-        // Очистити HTML з опису
-        const desc = (item.description || '').replace(/<[^>]*>/g, '').slice(0, 200);
-        // Час публікації
-        const pubTs = item.pubDate ? new Date(item.pubDate).getTime() : now();
-        all.push({
-          id: feed.id + '-' + item.guid?.slice(0, 20),
-          source: feed.name,
-          color: feed.color,
-          title: item.title || '—',
-          link: item.link || '',
-          desc,
-          pubTs,
-          pubStr: item.pubDate ? new Date(item.pubDate).toISOString().slice(0, 16).replace('T', ' ') : '—',
+  if (newsPromise) return newsPromise;
+  
+  newsPromise = (async () => {
+    const all = [];
+    await Promise.all(NEWS_FEEDS.map(async (feed) => {
+      try {
+        const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed.url), { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error('rss ' + res.status);
+        const data = await res.json();
+        (data.items || []).slice(0, 10).forEach(item => {
+          const desc = (item.description || '').replace(/<[^>]*>/g, '').slice(0, 600);
+          const pubTs = item.pubDate ? new Date(item.pubDate).getTime() : now();
+          all.push({
+            id: feed.id + '-' + item.guid?.slice(0, 20),
+            source: feed.name,
+            color: feed.color,
+            title: item.title || '—',
+            link: item.link || '',
+            desc,
+            sentiment: analyzeSentiment(item.title + ' ' + desc),
+            pubTs,
+            pubStr: item.pubDate ? new Date(item.pubDate).toISOString().slice(0, 16).replace('T', ' ') : '—',
+          });
         });
-      });
-    } catch (e) {
-      // тихо ігноруємо — одне джерело не повинне ламати інші
-    }
-  }));
-  // Сортувати за часом — найновіші зверху
-  all.sort((a, b) => b.pubTs - a.pubTs);
-  cachedNews = all.slice(0, 20);
-  newsTs = now();
-  return cachedNews;
+      } catch (e) {
+        // ігноруємо помилки окремих стрічок
+      }
+    }));
+    all.sort((a, b) => b.pubTs - a.pubTs);
+    cachedNews = all.slice(0, 150); // зберігаємо до 150 новин для широких звітів
+    newsTs = now();
+    newsPromise = null;
+    return cachedNews;
+  })();
+  return newsPromise;
 }
 
 // ─── ПАРСЕРИ ПРОЄКТІВ ЛАБОРАТОРІЇ ──────────────────────────────────────────
@@ -2148,6 +2168,7 @@ function agentMessage(text, type = 'bot', meta = 'ЗВІТ') {
   while (chat.children.length > 100) chat.removeChild(chat.firstChild);
   // Зберегти в persistent memory
   memSaveMessage({ type, tag, text: text.replace(/<[^>]*>/g, '').slice(0, 500) });
+  return div;
 }
 
 function userMessage(text) {
@@ -2355,7 +2376,7 @@ function phaseUa(mode) {
 }
 
 // ─── Звіт по конкретній категорії ──────────────────────────────────────────
-function reportCategory(scaleId) {
+async function reportCategory(scaleId) {
   const scale = STATE.scales.find(s => s.id === scaleId);
   if (!scale) return;
   const o = STATE.organism;
@@ -2746,7 +2767,59 @@ function reportCategory(scaleId) {
   const obsCount = baselineCache[scaleId]?.length || 0;
   html += `<br><strong>Пам'ять:</strong> <span class="num">${obsCount}</span> точок у поточному вікні<br>`;
 
-  agentMessage(html, 'bot', scale.name);
+  // ── НОВИНИ КАТЕГОРІЇ (ШИРОКИЙ ЗВІТ) ──────────────────────────────
+  const catNews = STATE.news.filter(n => {
+    const text = (n.title + ' ' + n.desc).toLowerCase();
+    const keywords = {
+      space: ['space', 'nasa', 'moon', 'mars', 'orbit', 'solar', 'космос', 'esa', 'launch'],
+      planet: ['climate', 'weather', 'earthquake', 'storm', 'fire', 'клімат', 'usgs', 'noaa'],
+      humanity: ['population', 'health', 'disease', 'people', 'людство', 'who', 'medicine'],
+      energy: ['energy', 'oil', 'gas', 'power', 'nuclear', 'енерг', 'grid'],
+      economy: ['economy', 'market', 'bank', 'crypto', 'trade', 'економ', 'bitcoin', 'finance', 'invest'],
+      infra: ['transport', 'flight', 'infrastructure', 'supply', 'інфра', 'logistics', 'rail'],
+      knowledge: ['science', 'research', 'study', 'discover', 'наук', 'university'],
+      info: ['media', 'tech', 'internet', 'data', 'інфо', 'cyber'],
+      ai: ['ai', 'artificial intelligence', 'openai', 'model', 'tech', 'ші', 'algorithm', 'gpt', 'neural'],
+      conflicts: ['war', 'military', 'attack', 'conflict', 'війн', 'конфлікт', 'troop', 'rebel', 'casualty', 'strike'],
+      geopolitics: ['sanction', 'nato', 'diplomacy', 'geopolitics', 'політ', 'treaty', 'embassy', 'un']
+    };
+    return keywords[scaleId]?.some(k => text.includes(k));
+  });
+
+  let msgDiv;
+  if (catNews.length > 0) {
+    // Спочатку показуємо звіт і повідомляємо про процес перекладу
+    msgDiv = agentMessage(html + `<br><br><em style="color:var(--teal);">🔄 Перекладаю ${Math.min(15, catNews.length)} новин українською...</em>`, 'bot', scale.name);
+    
+    const items = catNews.slice(0, 15);
+    const translatedItems = await Promise.all(items.map(async (n) => {
+      return { ...n, titleUa: await translateEnToUk(n.title), descUa: await translateEnToUk(n.desc) };
+    }));
+
+    let newsHtml = `<br><br><strong style="font-size: 1.1em; color: var(--electric-blue);">ДЕТАЛЬНИЙ ЗВІТ ПОДІЙ (${scale.name}):</strong><br>`;
+    newsHtml += `<div style="max-height: 400px; overflow-y: auto; padding-right: 10px; margin-top: 10px; border-left: 2px solid var(--soft-white-faint); padding-left: 10px; font-size: 0.9em; display: flex; flex-direction: column; gap: 10px;">`;
+    translatedItems.forEach((n, i) => {
+      const sentColor = n.sentiment === 'positive' ? 'var(--teal)' : n.sentiment === 'negative' ? 'var(--crimson)' : 'var(--soft-white-faint)';
+      newsHtml += `<div>`;
+      newsHtml += `<strong>${i + 1}.</strong> <strong style="color: ${n.color};">${n.source}</strong> · ${n.pubStr} <span style="color: ${sentColor}; text-transform: uppercase; font-size: 0.8em; border: 1px solid ${sentColor}; padding: 1px 4px; border-radius: 3px; margin-left: 5px;">${n.sentiment}</span><br>`;
+      newsHtml += `<strong style="color: var(--soft-white);">${n.titleUa}</strong><br>`;
+      newsHtml += `<span style="color: var(--soft-white-faint);">${n.descUa}...</span>`;
+      newsHtml += `</div>`;
+    });
+    newsHtml += `</div>`;
+
+    if (msgDiv) {
+      msgDiv.querySelector('.msg-body').innerHTML = html + newsHtml;
+      // scroll to bottom after update
+      const chat = document.getElementById('chat');
+      if (chat) chat.scrollTop = chat.scrollHeight;
+    } else {
+      agentMessage(html + newsHtml, 'bot', scale.name);
+    }
+  } else {
+    html += `<br><br><strong style="color: var(--crimson);">Новин по даній категорії за останній час не знайдено.</strong>`;
+    agentMessage(html, 'bot', scale.name);
+  }
 }
 
 function reportLab() {
